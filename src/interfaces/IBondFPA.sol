@@ -8,16 +8,16 @@ interface IBondFPA is IBondAuctioneer {
     /// @notice Information pertaining to bond market
     struct BondMarket {
         address owner; // market owner. sends payout tokens, receives quote tokens (defaults to creator)
-        ERC20 payoutToken; // token to pay depositors with
+        ERC20[] payoutToken; // token to pay depositors with
         ERC20 quoteToken; // token to accept as payment
         address callbackAddr; // address to call for any operations on bond purchase. Must inherit to IBondCallback.
         bool capacityInQuote; // capacity limit is in payment token (true) or in payout (false, default)
-        uint256 capacity; // capacity remaining
-        uint256 maxPayout; // max payout tokens out in one order
-        uint256 price; // fixed price of the market (see MarketParams struct)
-        uint256 scale; // scaling factor for the market (see MarketParams struct)
-        uint256 sold; // payout tokens out
-        uint256 purchased; // quote tokens in
+        uint256[] capacity; // capacity remaining
+        uint256[] maxPayout; // max payout tokens out in one order
+        uint256[] price; // fixed price of the market (see MarketParams struct)
+        uint256[] scale; // scaling factor for the market (see MarketParams struct)
+        uint256[] sold; // payout tokens out
+        uint256[] purchased; // quote tokens in
     }
 
     /// @notice Information pertaining to market duration and vesting
@@ -60,17 +60,17 @@ interface IBondFPA is IBondAuctioneer {
     /// @dev                        Providing a scaling factor adjustment that doesn't follow this formula could lead to under or overflow errors in the market.
     /// @return                 ID of new bond market
     struct MarketParams {
-        ERC20 payoutToken;
+        ERC20[] payoutToken;
         ERC20 quoteToken;
         address callbackAddr;
         bool capacityInQuote;
-        uint256 capacity;
-        uint256 formattedPrice;
+        uint256[] capacity;
+        uint256[] formattedPrice;
         uint48 depositInterval;
         uint48 vesting;
         uint48 start;
         uint48 duration;
-        int8 scaleAdjustment;
+        int8[] scaleAdjustment;
     }
 
     /// @notice Set the minimum market duration

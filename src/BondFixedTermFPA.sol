@@ -3,6 +3,7 @@ pragma solidity 0.8.15;
 
 import {BondBaseFPA, IBondAggregator, Authority} from "./bases/BondBaseFPA.sol";
 import {IBondTeller} from "./interfaces/IBondTeller.sol";
+import {ERC20} from "solmate/src/tokens/ERC20.sol";
 
 /// @title Bond Fixed-Term Fixed Price Auctioneer
 /// @notice Bond Fixed-Term Fixed Price Auctioneer Contract
@@ -39,7 +40,33 @@ contract BondFixedTermFPA is BondBaseFPA {
     /// @inheritdoc BondBaseFPA
     function createMarket(bytes calldata params_) external override returns (uint256) {
         // Decode params into the struct type expected by this auctioneer
-        MarketParams memory params = abi.decode(params_, (MarketParams));
+        (
+            ERC20[] memory payoutToken,
+            ERC20 quoteToken,
+            address callbackAddr,
+            bool capacityInQuote,
+            uint256[] memory capacity,
+            uint256[] memory formattedPrice,
+            uint48 depositInterval,
+            uint48 vesting,
+            uint48 start,
+            uint48 duration,
+            int8[] memory scaleAdjustment
+        ) = abi.decode(params_, (ERC20[], ERC20, address, bool, uint256[], uint256[], uint48, uint48, uint48, uint48, int8[]));
+
+        MarketParams memory params = MarketParams({
+            payoutToken: payoutToken,
+            quoteToken: quoteToken,
+            callbackAddr: callbackAddr,
+            capacityInQuote: capacityInQuote,
+            capacity: capacity,
+            formattedPrice: formattedPrice,
+            depositInterval: depositInterval,
+            vesting: vesting,
+            start: start,
+            duration: duration,
+            scaleAdjustment: scaleAdjustment
+        });
 
         // Check that the vesting parameter is valid for a fixed-term market
         if (params.vesting != 0 && (params.vesting < 1 days || params.vesting > MAX_FIXED_TERM))
