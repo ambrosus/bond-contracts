@@ -9,26 +9,25 @@ interface IBondOFDA is IBondAuctioneer {
     /// @notice Basic token and capacity information for a bond market
     struct BondMarket {
         address owner; // market owner. sends payout tokens, receives quote tokens (defaults to creator)
-        ERC20 payoutToken; // token to pay depositors with
+        ERC20[] payoutToken; // token to pay depositors with
         ERC20 quoteToken; // token to accept as payment
         address callbackAddr; // address to call for any operations on bond purchase. Must inherit to IBondCallback.
-        bool capacityInQuote; // capacity limit is in payment token (true) or in payout (false, default)
-        uint256 capacity; // capacity remaining
-        uint256 maxPayout; // max payout tokens out in one order
-        uint256 sold; // payout tokens out
+        uint256[] capacity; // capacity remaining
+        uint256[] maxPayout; // max payout tokens out in one order
+        uint256[] sold; // payout tokens out
         uint256 purchased; // quote tokens in
     }
 
     /// @notice Information pertaining to pricing and time parameters for a market
     struct BondTerms {
-        IBondOracle oracle; // address to call for reference price. Must implement IBondOracle.
+        IBondOracle[] oracle; // address to call for reference price. Must implement IBondOracle.
         uint48 start; // timestamp when market starts
         uint48 conclusion; // timestamp when market no longer offered
         uint48 vesting; // length of time from deposit to expiry if fixed-term, vesting timestamp if fixed-expiry
-        uint48 fixedDiscount; // fixed discount percent for the market
-        uint256 minPrice; // minimum price (hard floor for the market)
-        uint256 scale; // scaling factor for the market (see MarketParams struct)
-        uint256 oracleConversion; // conversion factor for oracle -> market price
+        uint48[] fixedDiscount; // fixed discount percent for the market
+        uint256[] minPrice; // minimum price (hard floor for the market)
+        uint256[] scale; // scaling factor for the market (see MarketParams struct)
+        uint256[] oracleConversion; // conversion factor for oracle -> market price
     }
 
     /// @notice             Parameters to create a new bond market
@@ -39,24 +38,22 @@ interface IBondOFDA is IBondAuctioneer {
     /// @dev                    3. Oracle contract address, should conform to IBondOracle.
     /// @dev                    4. Fixed discount with 3 decimals of precision, e.g. 10_000 = 10%. Percent to reduce oracle price by to calculate market price.
     /// @dev                    5. Maximum discount from current oracle price with 3 decimals of precision, sets absolute minimum price for market
-    /// @dev                    6. Is Capacity in Quote Token?
-    /// @dev                    7. Capacity (amount in the decimals of the token chosen to provided capacity in).
-    /// @dev                    8. Deposit interval (seconds). Desired frequency of bonds. Used to calculate max payout of market (maxPayout = length / depositInterval * capacity)
-    /// @dev                    9. Is fixed term ? Vesting length (seconds) : Vesting expiry (timestamp).
+    /// @dev                    6. Capacity (amount in the decimals of the token chosen to provided capacity in).
+    /// @dev                    7. Deposit interval (seconds). Desired frequency of bonds. Used to calculate max payout of market (maxPayout = length / depositInterval * capacity)
+    /// @dev                    8. Is fixed term ? Vesting length (seconds) : Vesting expiry (timestamp).
     /// @dev                        A 'vesting' param longer than 50 years is considered a timestamp for fixed expiry.
-    /// @dev                    10. Start Time of the Market (timestamp) - Allows starting a market in the future.
+    /// @dev                    9. Start Time of the Market (timestamp) - Allows starting a market in the future.
     /// @dev                        If a start time is provided, the txn must be sent prior to the start time (functions as a deadline).
     /// @dev                        If start time is not provided (i.e. 0), the market will start immediately.
-    /// @dev                    11. Market Duration (seconds) - Duration of the market in seconds.
+    /// @dev                    10. Market Duration (seconds) - Duration of the market in seconds.
     struct MarketParams {
-        ERC20 payoutToken;
+        ERC20[] payoutToken;
         ERC20 quoteToken;
         address callbackAddr;
-        IBondOracle oracle;
-        uint48 fixedDiscount;
-        uint48 maxDiscountFromCurrent;
-        bool capacityInQuote;
-        uint256 capacity;
+        IBondOracle[] oracle;
+        uint48[] fixedDiscount;
+        uint48[] maxDiscountFromCurrent;
+        uint256[] capacity;
         uint48 depositInterval;
         uint48 vesting;
         uint48 start;
@@ -75,9 +72,9 @@ interface IBondOFDA is IBondAuctioneer {
 
     /* ========== VIEW FUNCTIONS ========== */
 
-    /// @notice             Calculate current market price of payout token in quote tokens
+    /// @notice             Calculate current market prices of payout tokens in quote tokens
     /// @param id_          ID of market
-    /// @return             Price for market in configured decimals (see MarketParams)
+    /// @return             Prices for market in configured decimals (see MarketParams)
     /// @dev price is derived from the equation:
     //
     // p = max(min_p, o_p * (1 - d))
@@ -89,11 +86,11 @@ interface IBondOFDA is IBondAuctioneer {
     // d = fixed discount
     //
     // if price is below minimum price, minimum price is returned
-    function marketPrice(uint256 id_) external view override returns (uint256);
+    function marketPrice(uint256 id_) external view override returns (uint256[] memory);
 
-    /// @notice             Calculate max payout of the market in payout tokens
+    /// @notice             Calculate max payouts of the market in payout tokens
     /// @dev                Returns a dynamically calculated payout or the maximum set by the creator, whichever is less.
     /// @param id_          ID of market
-    /// @return             Current max payout for the market in payout tokens
-    function maxPayout(uint256 id_) external view returns (uint256);
+    /// @return             Current max payouts for the market in payout tokens
+    function maxPayout(uint256 id_) external view returns (uint256[] memory);
 }

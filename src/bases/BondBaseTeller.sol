@@ -131,7 +131,7 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
         address referrer_,
         uint256 id_,
         uint256 amount_,
-        uint256 minAmountOut_
+        uint256[] calldata minAmountOut_
     ) external virtual nonReentrant returns (uint256, uint48) {
         ERC20 payoutToken;
         ERC20 quoteToken;

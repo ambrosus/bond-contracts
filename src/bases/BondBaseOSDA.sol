@@ -362,7 +362,7 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
     function purchaseBond(
         uint256 id_,
         uint256 amount_,
-        uint256 minAmountOut_
+        uint256[] calldata minAmountOut_
     ) external override returns (uint256 payout) {
         if (msg.sender != address(_teller)) revert Auctioneer_NotAuthorized();
 

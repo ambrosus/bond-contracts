@@ -26,8 +26,8 @@ interface IBondAuctioneer {
     function purchaseBond(
         uint256 id_,
         uint256 amount_,
-        uint256 minAmountOut_
-    ) external returns (uint256 payout);
+        uint256[] calldata minAmountOut_
+    ) external returns (uint256[] memory payout);
 
     /// @notice                         Set market intervals to different values than the defaults
     /// @notice                         Must be market owner
@@ -94,23 +94,23 @@ interface IBondAuctioneer {
         returns (
             address owner,
             address callbackAddr,
-            ERC20 payoutToken,
+            ERC20[] memory payoutToken,
             ERC20 quoteToken,
             uint48 vesting,
-            uint256 maxPayout
+            uint256[] memory maxPayout
         );
 
-    /// @notice             Calculate current market price of payout token in quote tokens
+    /// @notice             Calculate current market price of payout tokens in quote tokens
     /// @param id_          ID of market
     /// @return             Price for market in configured decimals
     //
     // if price is below minimum price, minimum price is returned
-    function marketPrice(uint256 id_) external view returns (uint256);
+    function marketPrice(uint256 id_) external view returns (uint256[] memory);
 
-    /// @notice             Scale value to use when converting between quote token and payout token amounts with marketPrice()
+    /// @notice             Scale value to use when converting between quote token and payout tokens amounts with marketPrice()
     /// @param id_          ID of market
     /// @return             Scaling factor for market in configured decimals
-    function marketScale(uint256 id_) external view returns (uint256);
+    function marketScale(uint256 id_) external view returns (uint256[] memory);
 
     /// @notice             Payout due for amount of quote tokens
     /// @dev                Accounts for debt and control variable decay so it is up to date
@@ -123,7 +123,7 @@ interface IBondAuctioneer {
         uint256 amount_,
         uint256 id_,
         address referrer_
-    ) external view returns (uint256);
+    ) external view returns (uint256[] memory);
 
     /// @notice             Returns maximum amount of quote token accepted by the market
     /// @param id_          ID of market
@@ -134,6 +134,10 @@ interface IBondAuctioneer {
     /// @notice             Does market send payout immediately
     /// @param id_          Market ID to search for
     function isInstantSwap(uint256 id_) external view returns (bool);
+
+    /// @notice            Is a given market have available capacity
+    /// @param id_         Market ID to search for
+    function isEmpty(uint256 id_) external view returns (bool);
 
     /// @notice             Is a given market accepting deposits
     /// @param id_          ID of market
@@ -150,5 +154,5 @@ interface IBondAuctioneer {
     function getAggregator() external view returns (IBondAggregator);
 
     /// @notice             Returns current capacity of a market
-    function currentCapacity(uint256 id_) external view returns (uint256);
+    function currentCapacity(uint256 id_) external view returns (uint256[] memory);
 }

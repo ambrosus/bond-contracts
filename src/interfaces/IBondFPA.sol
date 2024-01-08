@@ -11,13 +11,12 @@ interface IBondFPA is IBondAuctioneer {
         ERC20[] payoutToken; // token to pay depositors with
         ERC20 quoteToken; // token to accept as payment
         address callbackAddr; // address to call for any operations on bond purchase. Must inherit to IBondCallback.
-        bool capacityInQuote; // capacity limit is in payment token (true) or in payout (false, default)
-        uint256[] capacity; // capacity remaining
+        uint256[] capacity; // capacity remaining in payout tokens
         uint256[] maxPayout; // max payout tokens out in one order
         uint256[] price; // fixed price of the market (see MarketParams struct)
         uint256[] scale; // scaling factor for the market (see MarketParams struct)
         uint256[] sold; // payout tokens out
-        uint256[] purchased; // quote tokens in
+        uint256 purchased; // quote tokens in
     }
 
     /// @notice Information pertaining to market duration and vesting
@@ -85,9 +84,9 @@ interface IBondFPA is IBondAuctioneer {
 
     /* ========== VIEW FUNCTIONS ========== */
 
-    /// @notice             Calculate current market price of payout token in quote tokens
+    /// @notice             Calculate current market prices of payout tokens in quote tokens
     /// @param id_          ID of market
-    /// @return             Price for market in configured decimals (see MarketParams)
+    /// @return             Prices for market in configured decimals (see MarketParams)
     /// @dev price is derived from the equation:
     //
     // p = f_p
@@ -96,11 +95,11 @@ interface IBondFPA is IBondAuctioneer {
     // p = price
     // f_p = fixed price provided on creation
     //
-    function marketPrice(uint256 id_) external view override returns (uint256);
+    function marketPrice(uint256 id_) external view override returns (uint256[] memory);
 
-    /// @notice             Calculate max payout of the market in payout tokens
-    /// @dev                Returns a dynamically calculated payout or the maximum set by the creator, whichever is less.
+    /// @notice             Calculate max payouts of the market in payout tokens
+    /// @dev                Returns a dynamically calculated payouts or the maximum set by the creator, whichever is less.
     /// @param id_          ID of market
-    /// @return             Current max payout for the market in payout tokens
-    function maxPayout(uint256 id_) external view returns (uint256);
+    /// @return             Current max payouts for the market in payout tokens
+    function maxPayout(uint256 id_) external view returns (uint256[] memory);
 }

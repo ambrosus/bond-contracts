@@ -54,7 +54,7 @@ abstract contract BondBaseOFDA is IBondOFDA, Auth {
 
     event MarketCreated(
         uint256 indexed id,
-        address indexed payoutToken,
+        address[] indexed payoutToken,
         address indexed quoteToken,
         uint48 vesting
     );
@@ -137,19 +137,20 @@ abstract contract BondBaseOFDA is IBondOFDA, Auth {
         market.quoteToken = params_.quoteToken;
         market.payoutToken = params_.payoutToken;
         market.callbackAddr = params_.callbackAddr;
-        market.capacityInQuote = params_.capacityInQuote;
         market.capacity = params_.capacity;
 
         // Check that the fixed discount is in bounds (cannot be greater than or equal to 100%)
         BondTerms storage term = terms[marketId];
-        if (
-            params_.fixedDiscount >= ONE_HUNDRED_PERCENT ||
-            params_.fixedDiscount > params_.maxDiscountFromCurrent
-        ) revert Auctioneer_InvalidParams();
+        for (uint8 i = 0; i < params_.fixedDiscount.length; i++) {
+            if (
+                params_.fixedDiscount[i] >= ONE_HUNDRED_PERCENT ||
+                params_.fixedDiscount[i] > params_.maxDiscountFromCurrent[i]
+            ) revert Auctioneer_InvalidParams();
+        }
         term.fixedDiscount = params_.fixedDiscount;
 
         // Validate oracle and get price variables
-        (uint256 price, uint256 oracleConversion, uint256 scale) = _validateOracle(
+        (uint256[] memory price, uint256[] memory oracleConversion, uint256[] memory scale) = _validateOracle(
             marketId,
             params_.oracle,
             params_.quoteToken,
@@ -160,14 +161,17 @@ abstract contract BondBaseOFDA is IBondOFDA, Auth {
         term.oracleConversion = oracleConversion;
         term.scale = scale;
 
-        // Check that the max discount from current price is in bounds (cannot be greater than 100%)
-        if (params_.maxDiscountFromCurrent > ONE_HUNDRED_PERCENT) revert Auctioneer_InvalidParams();
+        for (uint8 i = 0; i < params_.maxDiscountFromCurrent.length; i++) {
+            // Check that the max discount from current price is in bounds (cannot be greater than 100%)
+            if (params_.maxDiscountFromCurrent[i] >= ONE_HUNDRED_PERCENT)
+                revert Auctioneer_InvalidParams();
 
-        // Calculate the minimum price for the market
-        term.minPrice = price.mulDivUp(
-            uint256(ONE_HUNDRED_PERCENT - params_.maxDiscountFromCurrent),
-            uint256(ONE_HUNDRED_PERCENT)
-        );
+            // Calculate the minimum price for the market
+            term.minPrice[i] = price[i].mulDivUp(
+                uint256(ONE_HUNDRED_PERCENT - params_.maxDiscountFromCurrent[i]),
+                uint256(ONE_HUNDRED_PERCENT)
+            );
+        }
 
         // Check time bounds
         if (
@@ -177,19 +181,12 @@ abstract contract BondBaseOFDA is IBondOFDA, Auth {
         ) revert Auctioneer_InvalidParams();
 
         // Calculate the maximum payout amount for this market
-        uint256 capacity = params_.capacityInQuote
-            ? params_.capacity.mulDiv(
-                scale,
-                price.mulDivUp(
-                    uint256(ONE_HUNDRED_PERCENT - params_.fixedDiscount),
-                    uint256(ONE_HUNDRED_PERCENT)
-                )
-            )
-            : params_.capacity;
-        market.maxPayout = capacity.mulDiv(
-            uint256(params_.depositInterval),
-            uint256(params_.duration)
-        );
+        for (uint8 i = 0; i < market.maxPayout.length; i++) {
+            market.maxPayout[i] = params_.capacity[i].mulDiv(
+                uint256(params_.depositInterval),
+                uint256(params_.duration)
+            );
+        }
 
         // Store bond time terms
         term.vesting = params_.vesting;
@@ -197,10 +194,15 @@ abstract contract BondBaseOFDA is IBondOFDA, Auth {
         term.start = start;
         term.conclusion = start + params_.duration;
 
+        address[] memory payoutTokensAddresses = new address[](params_.payoutToken.length);
+        for (uint8 i = 0; i < params_.payoutToken.length; i++) {
+            payoutTokensAddresses[i] = address(params_.payoutToken[i]);
+        }
+
         // Emit market created event
         emit MarketCreated(
             marketId,
-            address(params_.payoutToken),
+            payoutTokensAddresses,
             address(params_.quoteToken),
             params_.vesting
         );
@@ -210,80 +212,91 @@ abstract contract BondBaseOFDA is IBondOFDA, Auth {
 
     function _validateOracle(
         uint256 id_,
-        IBondOracle oracle_,
+        IBondOracle[] memory oracle_,
         ERC20 quoteToken_,
-        ERC20 payoutToken_,
-        uint48 fixedDiscount_
+        ERC20[] memory payoutToken_,
+        uint48[] memory fixedDiscount_
     )
         internal
         returns (
-            uint256,
-            uint256,
-            uint256
+            uint256[] memory,
+            uint256[] memory,
+            uint256[] memory
         )
     {
         // Ensure token decimals are in bounds
-        uint8 payoutTokenDecimals = payoutToken_.decimals();
         uint8 quoteTokenDecimals = quoteToken_.decimals();
-
-        if (payoutTokenDecimals < 6 || payoutTokenDecimals > 18) revert Auctioneer_InvalidParams();
         if (quoteTokenDecimals < 6 || quoteTokenDecimals > 18) revert Auctioneer_InvalidParams();
 
-        // Check that oracle is valid. It should:
-        // 1. Be a contract
-        if (address(oracle_) == address(0) || address(oracle_).code.length == 0)
-            revert Auctioneer_InvalidParams();
+        uint256[] memory currentPrice = new uint256[](oracle_.length);
+        uint256[] memory oracleConversion = new uint256[](oracle_.length);
+        uint256[] memory scale = new uint256[](oracle_.length);        
 
-        // 2. Allow registering markets
-        oracle_.registerMarket(id_, quoteToken_, payoutToken_);
+        for (uint8 i = 0; i < oracle_.length; i++) {
+            // Ensure token decimals are in bounds
+            uint8 payoutTokenDecimals = payoutToken_[i].decimals();
+            if (payoutTokenDecimals < 6 || payoutTokenDecimals > 18) revert Auctioneer_InvalidParams();
 
-        // 3. Return a valid price for the quote token : payout token pair
-        uint256 currentPrice = oracle_.currentPrice(id_);
-        if (currentPrice == 0) revert Auctioneer_OraclePriceZero();
+            // Check that oracle is valid. It should:
+            // 1. Be a contract
+            if (address(oracle_[i]) == address(0) || address(oracle_[i]).code.length == 0)
+                revert Auctioneer_InvalidParams();
 
-        // 4. Return a valid decimal value for the quote token : payout token pair price
-        uint8 oracleDecimals = oracle_.decimals(id_);
-        if (oracleDecimals < 6 || oracleDecimals > 18) revert Auctioneer_InvalidParams();
+            // 2. Allow registering markets
+            oracle_[i].registerMarket(id_, quoteToken_, payoutToken_[i]);
 
-        // Calculate scaling values for market:
-        // 1. We need a value to convert between the oracle decimals to the bond market decimals
-        // 2. We need the bond scaling value to convert between quote and payout tokens using the market price
+            // 3. Return a valid price for the quote token : payout token pair
+            currentPrice[i] = oracle_[i].currentPrice(id_);
+            if (currentPrice[i] == 0) revert Auctioneer_OraclePriceZero();
 
-        // Get the price decimals for the current oracle price
-        // Oracle price is in quote tokens per payout token
-        // E.g. if quote token is $10 and payout token is $2000,
-        // then the oracle price is 200 quote tokens per payout token.
-        // If the oracle has 18 decimals, then it would return 200 * 10^18.
-        // In this case, the price decimals would be 2 since 200 = 2 * 10^2.
-        int8 priceDecimals = _getPriceDecimals(
-            currentPrice.mulDivUp(
-                uint256(ONE_HUNDRED_PERCENT - fixedDiscount_),
-                uint256(ONE_HUNDRED_PERCENT)
-            ),
-            oracleDecimals
-        );
-        // Check price decimals in reasonable range
-        // These bounds are quite large and it is unlikely any combination of tokens
-        // will have a price difference larger than 10^24 in either direction.
-        // Check that oracle decimals are large enough to avoid precision loss from negative price decimals
-        if (int8(oracleDecimals) <= -priceDecimals || priceDecimals > 24)
-            revert Auctioneer_InvalidParams();
+            // 4. Return a valid decimal value for the quote token : payout token pair price
+            uint8 oracleDecimals = oracle_[i].decimals(id_);
+            if (oracleDecimals < 6 || oracleDecimals > 18) revert Auctioneer_InvalidParams();
 
-        // Calculate the oracle price conversion factor
-        // oraclePriceFactor = int8(oracleDecimals) + priceDecimals;
-        // bondPriceFactor = 36 - priceDecimals / 2 + priceDecimals;
-        // oracleConversion = 10^(bondPriceFactor - oraclePriceFactor);
-        uint256 oracleConversion = 10**uint8(36 - priceDecimals / 2 - int8(oracleDecimals));
+            // Calculate scaling values for market:
+            // 1. We need a value to convert between the oracle decimals to the bond market decimals
+            // 2. We need the bond scaling value to convert between quote and payout tokens using the market price
 
-        // Unit to scale calculation for this market by to ensure reasonable values
-        // for price, debt, and control variable without under/overflows.
-        //
-        // scaleAdjustment should be equal to (payoutDecimals - quoteDecimals) - ((payoutPriceDecimals - quotePriceDecimals) / 2)
-        // scale = 10^(36 + scaleAdjustment);
-        uint256 scale = 10 **
-            uint8(36 + int8(payoutTokenDecimals) - int8(quoteTokenDecimals) - priceDecimals / 2);
+            // Get the price decimals for the current oracle price
+            // Oracle price is in quote tokens per payout token
+            // E.g. if quote token is $10 and payout token is $2000,
+            // then the oracle price is 200 quote tokens per payout token.
+            // If the oracle has 18 decimals, then it would return 200 * 10^18.
+            // In this case, the price decimals would be 2 since 200 = 2 * 10^2.
+            int8 priceDecimals = _getPriceDecimals(
+                currentPrice[i].mulDivUp(
+                    uint256(ONE_HUNDRED_PERCENT - fixedDiscount_[i]),
+                    uint256(ONE_HUNDRED_PERCENT)
+                ),
+                oracleDecimals
+            );
 
-        return (currentPrice * oracleConversion, oracleConversion, scale);
+            // Check price decimals in reasonable range
+            // These bounds are quite large and it is unlikely any combination of tokens
+            // will have a price difference larger than 10^24 in either direction.
+            // Check that oracle decimals are large enough to avoid precision loss from negative price decimals
+            if (int8(oracleDecimals) <= -priceDecimals || priceDecimals > 24)
+                revert Auctioneer_InvalidParams();
+
+            // Calculate the oracle price conversion factor
+            // oraclePriceFactor = int8(oracleDecimals) + priceDecimals;
+            // bondPriceFactor = 36 - priceDecimals / 2 + priceDecimals;
+            // oracleConversion = 10^(bondPriceFactor - oraclePriceFactor);
+            oracleConversion[i] = 10**uint8(36 - priceDecimals / 2 - int8(oracleDecimals));
+
+            // 
+            currentPrice[i] *= oracleConversion[i];
+
+            // Unit to scale calculation for this market by to ensure reasonable values
+            // for price, debt, and control variable without under/overflows.
+            //
+            // scaleAdjustment should be equal to (payoutDecimals - quoteDecimals) - ((payoutPriceDecimals - quotePriceDecimals) / 2)
+            // scale = 10^(36 + scaleAdjustment);
+            scale[i] = 10 **
+                uint8(36 + int8(payoutTokenDecimals) - int8(quoteTokenDecimals) - priceDecimals / 2);
+        }
+
+        return (currentPrice, oracleConversion, scale);
     }
 
     /// @inheritdoc IBondAuctioneer
@@ -341,7 +354,7 @@ abstract contract BondBaseOFDA is IBondOFDA, Auth {
     function closeMarket(uint256 id_) external override {
         if (msg.sender != markets[id_].owner) revert Auctioneer_OnlyMarketOwner();
         terms[id_].conclusion = uint48(block.timestamp);
-        markets[id_].capacity = 0;
+        markets[id_].capacity = new uint256[](markets[id_].capacity.length);
 
         emit MarketClosed(id_);
     }
@@ -352,8 +365,8 @@ abstract contract BondBaseOFDA is IBondOFDA, Auth {
     function purchaseBond(
         uint256 id_,
         uint256 amount_,
-        uint256 minAmountOut_
-    ) external override returns (uint256 payout) {
+        uint256[] calldata minAmountOut_
+    ) external override returns (uint256[] memory payout) {
         if (msg.sender != address(_teller)) revert Auctioneer_NotAuthorized();
 
         BondMarket storage market = markets[id_];
@@ -367,40 +380,43 @@ abstract contract BondBaseOFDA is IBondOFDA, Auth {
         if (!isLive(id_)) revert Auctioneer_MarketNotActive();
 
         // Get current price with fixed discount
-        uint256 price = marketPrice(id_);
+        uint256[] memory price = marketPrice(id_);
 
-        // Payout for the deposit = amount / price
-        //
-        // where:
-        // payout = payout tokens out
-        // amount = quote tokens in
-        // price = quote tokens : payout token (i.e. 200 QUOTE : BASE), adjusted for scaling
-        payout = amount_.mulDiv(term.scale, price);
+        for (uint8 i = 0; i < market.payoutToken.length; i++) {
+            // Payout for the deposit = amount / price
+            //
+            // where:
+            // payout = payout tokens out
+            // amount = quote tokens in
+            // price = quote tokens : payout token (i.e. 200 QUOTE : BASE), adjusted for scaling
+            payout[i] = amount_.mulDiv(term.scale[i], price[i]);
 
-        // Payout must be greater than user inputted minimum
-        if (payout < minAmountOut_) revert Auctioneer_AmountLessThanMinimum();
+            // Payout must be greater than user inputted minimum
+            if (payout[i] < minAmountOut_[i]) revert Auctioneer_AmountLessThanMinimum();
 
-        // Markets have a max payout amount per transaction
-        if (payout > market.maxPayout) revert Auctioneer_MaxPayoutExceeded();
+            // Markets have a max payout amount per transaction
+            if (payout[i] > market.maxPayout[i]) revert Auctioneer_MaxPayoutExceeded();
 
-        // Update Capacity
+            // Update Capacity
 
-        // Capacity is either the number of payout tokens that the market can sell
-        // (if capacity in quote is false),
-        //
-        // or the number of quote tokens that the market can buy
-        // (if capacity in quote is true)
+            // Capacity is either the number of payout tokens that the market can sell
+            // (if capacity in quote is false),
+            //
+            // or the number of quote tokens that the market can buy
+            // (if capacity in quote is true)
 
-        // If amount/payout is greater than capacity remaining, revert
-        if (market.capacityInQuote ? amount_ > market.capacity : payout > market.capacity)
-            revert Auctioneer_NotEnoughCapacity();
-        // Capacity is decreased by the deposited or paid amount
-        market.capacity -= market.capacityInQuote ? amount_ : payout;
+            // If amount/payout is greater than capacity remaining, revert
+            if (payout[i] > market.capacity[i])
+                revert Auctioneer_NotEnoughCapacity();
+            // Capacity is decreased by the deposited or paid amount
+            market.capacity[i] -= payout[i];
 
-        // Markets keep track of how many quote tokens have been
-        // purchased, and how many payout tokens have been sold
+            // Markets keep track of how many quote tokens have been sold
+            market.sold[i] += payout[i];
+        }
+
+        // Markets keep track of how many quote tokens have been purchased
         market.purchased += amount_;
-        market.sold += payout;
     }
 
     /* ========== INTERNAL VIEW FUNCTIONS ========== */
@@ -429,10 +445,10 @@ abstract contract BondBaseOFDA is IBondOFDA, Auth {
         returns (
             address owner,
             address callbackAddr,
-            ERC20 payoutToken,
+            ERC20[] memory payoutToken,
             ERC20 quoteToken,
             uint48 vesting,
-            uint256 maxPayout_
+            uint256[] memory maxPayout_
         )
     {
         BondMarket memory market = markets[id_];
@@ -447,29 +463,31 @@ abstract contract BondBaseOFDA is IBondOFDA, Auth {
     }
 
     /// @inheritdoc IBondAuctioneer
-    function marketPrice(uint256 id_) public view override returns (uint256) {
+    function marketPrice(uint256 id_) public view override returns (uint256[] memory prices) {
         // Get the current price from the oracle
         BondTerms memory term = terms[id_];
-        uint256 oraclePrice = term.oracle.currentPrice(id_);
+        
+        for (uint8 i = 0; i < markets[id_].payoutToken.length; i++) {
+            uint256 oraclePrice = term.oracle[i].currentPrice(id_);
+             // Revert if price is 0
+            if (oraclePrice == 0) revert Auctioneer_OraclePriceZero();
 
-        // Revert if price is 0
-        if (oraclePrice == 0) revert Auctioneer_OraclePriceZero();
+            // Convert the oracle price to market price decimals using the oracleConversion
+            uint256 price = oraclePrice * term.oracleConversion[i];
 
-        // Convert the oracle price to market price decimals using the oracleConversion
-        uint256 price = oraclePrice * term.oracleConversion;
+            // Apply the fixed discount
+            uint256 discountedPrice = price.mulDivUp(
+                ONE_HUNDRED_PERCENT - term.fixedDiscount[i],
+                ONE_HUNDRED_PERCENT
+            );
 
-        // Apply the fixed discount
-        uint256 discountedPrice = price.mulDivUp(
-            ONE_HUNDRED_PERCENT - term.fixedDiscount,
-            ONE_HUNDRED_PERCENT
-        );
-
-        // Check if price is less than the minimum price and return
-        return discountedPrice < term.minPrice ? term.minPrice : discountedPrice;
+            // Check if price is less than the minimum price and return
+            prices[i] = discountedPrice < term.minPrice[i] ? term.minPrice[i] : discountedPrice;
+        }
     }
 
     /// @inheritdoc IBondAuctioneer
-    function marketScale(uint256 id_) external view override returns (uint256) {
+    function marketScale(uint256 id_) external view override returns (uint256[] memory) {
         return terms[id_].scale;
     }
 
@@ -478,35 +496,34 @@ abstract contract BondBaseOFDA is IBondOFDA, Auth {
         uint256 amount_,
         uint256 id_,
         address referrer_
-    ) public view override returns (uint256) {
-        // Calculate the payout for the given amount of tokens
-        uint256 fee = amount_.mulDiv(_teller.getFee(referrer_), ONE_HUNDRED_PERCENT);
-        uint256 payout = (amount_ - fee).mulDiv(terms[id_].scale, marketPrice(id_));
+    ) public view override returns (uint256[] memory payouts) {
+        uint256[] memory prices = marketPrice(id_);
+        uint256[] memory maxPayouts = maxPayout(id_);
 
-        // Check that the payout is less than or equal to the maximum payout,
-        // Revert if not, otherwise return the payout
-        if (payout > maxPayout(id_)) {
-            revert Auctioneer_MaxPayoutExceeded();
-        } else {
-            return payout;
+
+        for (uint8 i = 0; i < markets[id_].payoutToken.length; i++) {
+            // Calculate the payout for the given amount of tokens
+            uint256 fee = amount_.mulDiv(_teller.getFee(referrer_), ONE_HUNDRED_PERCENT);
+            uint256 payout = (amount_ - fee).mulDiv(terms[id_].scale[i], prices[i]);
+
+            // Check that the payout is less than or equal to the maximum payout,
+            // Revert if not, otherwise return the payout
+            if (payout > maxPayouts[i]) {
+                revert Auctioneer_MaxPayoutExceeded();
+            } else {
+                payouts[i] = payout;
+            }
         }
     }
 
     /// @inheritdoc IBondOFDA
-    function maxPayout(uint256 id_) public view override returns (uint256) {
-        // Get current price
-        uint256 price = marketPrice(id_);
-
+    function maxPayout(uint256 id_) public view override returns (uint256[] memory maxPayouts) {
         BondMarket memory market = markets[id_];
-        BondTerms memory term = terms[id_];
 
-        // Convert capacity to payout token units for comparison with max payout
-        uint256 capacity = market.capacityInQuote
-            ? market.capacity.mulDiv(term.scale, price)
-            : market.capacity;
-
-        // Cap max payout at the remaining capacity
-        return market.maxPayout > capacity ? capacity : market.maxPayout;
+        for (uint8 i = 0; i < market.payoutToken.length; i++) {
+            // Cap max payout at the remaining capacity
+            maxPayouts[i] = market.maxPayout[i] > market.capacity[i] ? market.capacity[i] : market.maxPayout[i];
+        }
     }
 
     /// @inheritdoc IBondAuctioneer
@@ -515,11 +532,16 @@ abstract contract BondBaseOFDA is IBondOFDA, Auth {
         // Maximum of the maxPayout and the remaining capacity converted to quote tokens
         BondMarket memory market = markets[id_];
         BondTerms memory term = terms[id_];
-        uint256 price = marketPrice(id_);
-        uint256 quoteCapacity = market.capacityInQuote
-            ? market.capacity
-            : market.capacity.mulDiv(price, term.scale);
-        uint256 maxQuote = market.maxPayout.mulDiv(price, term.scale);
+        uint256[] memory price = marketPrice(id_);
+
+        uint256 quoteCapacity = 0;
+        uint256 maxQuote = 0;
+
+        for (uint8 i = 0; i < market.payoutToken.length; i++) {
+            quoteCapacity += market.capacity[i].mulDiv(price[i], term.scale[i]);
+            maxQuote += market.maxPayout[i].mulDiv(price[i], term.scale[i]);
+        }
+
         uint256 amountAccepted = quoteCapacity < maxQuote ? quoteCapacity : maxQuote;
 
         // Take into account teller fees and return
@@ -542,8 +564,20 @@ abstract contract BondBaseOFDA is IBondOFDA, Auth {
     }
 
     /// @inheritdoc IBondAuctioneer
+    function isEmpty(uint256 id_) public view override returns (bool) {
+        bool isEmpty_ = false;
+        for (uint8 i = 0; i < markets[id_].capacity.length; i++) {
+            if (markets[id_].capacity[i] == 0) {
+                isEmpty_ = true;
+                break;
+            }
+        }
+        return isEmpty_;
+    }
+
+    /// @inheritdoc IBondAuctioneer
     function isLive(uint256 id_) public view override returns (bool) {
-        return (markets[id_].capacity != 0 &&
+        return (!isEmpty(id_) &&
             terms[id_].conclusion > uint48(block.timestamp) &&
             terms[id_].start <= uint48(block.timestamp));
     }
@@ -564,7 +598,7 @@ abstract contract BondBaseOFDA is IBondOFDA, Auth {
     }
 
     /// @inheritdoc IBondAuctioneer
-    function currentCapacity(uint256 id_) external view override returns (uint256) {
+    function currentCapacity(uint256 id_) external view override returns (uint256[] memory) {
         return markets[id_].capacity;
     }
 }

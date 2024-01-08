@@ -17,7 +17,7 @@ interface IBondAggregator {
     /// @param payoutToken_ Token to be paid out by the market
     /// @param quoteToken_  Token to be accepted by the market
     /// @param marketId     ID of the market being created
-    function registerMarket(ERC20 payoutToken_, ERC20 quoteToken_)
+    function registerMarket(ERC20[] memory payoutToken_, ERC20 quoteToken_)
         external
         returns (uint256 marketId);
 

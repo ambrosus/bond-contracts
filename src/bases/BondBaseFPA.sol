@@ -52,7 +52,7 @@ abstract contract BondBaseFPA is IBondFPA, Auth {
 
     event MarketCreated(
         uint256 indexed id,
-        address indexed payoutToken,
+        address[] indexed payoutToken,
         address indexed quoteToken,
         uint48 vesting,
         uint256 fixedPrice
@@ -182,9 +182,9 @@ abstract contract BondBaseFPA is IBondFPA, Auth {
         }
 
         // Register new market on aggregator and get marketId
-        uint256 marketId = _aggregator.registerMarket(params_.payoutToken[0], params_.quoteToken);
+        uint256 marketId = _aggregator.registerMarket(params_.payoutToken, params_.quoteToken);
 
-        uint256[] memory _purchased = new uint256[](params_.payoutToken.length);
+        uint256 _purchased = 0;
         uint256[] memory _sold = new uint256[](params_.payoutToken.length);
 
         markets[marketId] = BondMarket({
@@ -192,7 +192,6 @@ abstract contract BondBaseFPA is IBondFPA, Auth {
             payoutToken: params_.payoutToken,
             quoteToken: params_.quoteToken,
             callbackAddr: params_.callbackAddr,
-            capacityInQuote: params_.capacityInQuote,
             capacity: params_.capacity,
             maxPayout: _maxPayout,
             price: params_.formattedPrice,
@@ -210,9 +209,14 @@ abstract contract BondBaseFPA is IBondFPA, Auth {
             vesting: params_.vesting
         });
 
+        address[] memory payoutTokensAddresses = new address[](params_.payoutToken.length);
+        for (uint8 i = 0; i < params_.payoutToken.length; i++) {
+            payoutTokensAddresses[i] = address(params_.payoutToken[i]);
+        }
+
         emit MarketCreated(
             marketId,
-            address(params_.payoutToken[0]),
+            payoutTokensAddresses,
             address(params_.quoteToken),
             params_.vesting,
             params_.formattedPrice[0]
@@ -287,9 +291,9 @@ abstract contract BondBaseFPA is IBondFPA, Auth {
     function purchaseBond(
         uint256 id_,
         uint256 amount_,
-        uint256 minAmountOut_
-    ) external override returns (uint256 payout) {
-        // if (msg.sender != address(_teller)) revert Auctioneer_NotAuthorized();
+        uint256[] calldata minAmountOut_
+    ) external override returns (uint256[] memory payout) {
+        if (msg.sender != address(_teller)) revert Auctioneer_NotAuthorized();
 
         BondMarket storage market = markets[id_];
 
@@ -302,13 +306,13 @@ abstract contract BondBaseFPA is IBondFPA, Auth {
 
         for (uint8 i = 0; i < market.payoutToken.length; i++) {
             // Calculate payout amount from fixed price
-            payout = amount_.mulDiv(market.scale[i], market.price[i]);
+            payout[i] = amount_.mulDiv(market.scale[i], market.price[i]);
 
             // Payout must be greater than user inputted minimum
-            if (payout < minAmountOut_) revert Auctioneer_AmountLessThanMinimum();
+            if (payout[i] < minAmountOut_[i]) revert Auctioneer_AmountLessThanMinimum();
 
             // Markets have a max payout amount per transaction
-            if (payout > market.maxPayout[i]) revert Auctioneer_MaxPayoutExceeded();
+            if (payout[i] > market.maxPayout[i]) revert Auctioneer_MaxPayoutExceeded();
 
             // Update Capacity
 
@@ -319,16 +323,17 @@ abstract contract BondBaseFPA is IBondFPA, Auth {
             // (if capacity in quote is true)
 
             // If amount/payout is greater than capacity remaining, revert
-            if (payout > market.capacity[i])
+            if (payout[i] > market.capacity[i])
                 revert Auctioneer_NotEnoughCapacity();
             // Capacity is decreased by the deposited or paid amount
-            market.capacity[i] -= payout;
+            market.capacity[i] -= payout[i];
 
-            // Markets keep track of how many quote tokens have been
-            // purchased, and how many payout tokens have been sold
-            market.purchased[i] += amount_;
-            market.sold[i] += payout;
+            // Markets keep track of how many quote tokens have been sold
+            market.sold[i] += payout[i];
         }
+
+        // Markets keep track of how many quote tokens have been purchased
+        market.purchased += amount_;
     }
 
     /* ========== VIEW FUNCTIONS ========== */
@@ -342,37 +347,31 @@ abstract contract BondBaseFPA is IBondFPA, Auth {
         returns (
             address owner,
             address callbackAddr,
-            ERC20 payoutToken,
+            ERC20[] memory payoutToken,
             ERC20 quoteToken,
             uint48 vesting,
-            uint256 maxPayout_
+            uint256[] memory maxPayout_
         )
     {
-        // BondMarket memory market = markets[id_];
-        // return (
-        //     market.owner,
-        //     market.callbackAddr,
-        //     market.payoutToken,
-        //     market.quoteToken,
-        //     terms[id_].vesting,
-        //     maxPayout(id_)
-        // );
-
-        return (address(0), address(0), ERC20(address(0)), ERC20(address(0)), 0, 0);
+        BondMarket memory market = markets[id_];
+        return (
+            market.owner,
+            market.callbackAddr,
+            market.payoutToken,
+            market.quoteToken,
+            terms[id_].vesting,
+            maxPayout(id_)
+        );
     }
 
     /// @inheritdoc IBondAuctioneer
-    function marketPrice(uint256 id_) public view override returns (uint256) {
-        // return markets[id_].price;
-
-        return 0;
+    function marketPrice(uint256 id_) public view override returns (uint256[] memory) {
+        return markets[id_].price;
     }
 
     /// @inheritdoc IBondAuctioneer
-    function marketScale(uint256 id_) external view override returns (uint256) {
-        // return markets[id_].scale;
-
-        return 0;
+    function marketScale(uint256 id_) external view override returns (uint256[] memory) {
+        return markets[id_].scale;
     }
 
     /// @inheritdoc IBondAuctioneer
@@ -380,62 +379,77 @@ abstract contract BondBaseFPA is IBondFPA, Auth {
         uint256 amount_,
         uint256 id_,
         address referrer_
-    ) public view override returns (uint256) {
-        // // Calculate the payout for the given amount of tokens
-        // uint256 fee = amount_.mulDiv(_teller.getFee(referrer_), ONE_HUNDRED_PERCENT);
-        // uint256 payout = (amount_ - fee).mulDiv(markets[id_].scale, marketPrice(id_));
+    ) public view override returns (uint256[] memory) {
+        // Calculate the payout for the given amount of tokens
+        uint256 fee = amount_.mulDiv(_teller.getFee(referrer_), ONE_HUNDRED_PERCENT);
+        uint256 amountWithoutFee = amount_ - fee;
+        uint256[] memory prices = marketPrice(id_);
+        uint256[] memory payouts = new uint256[](prices.length);
+        uint256[] memory maxPayouts = maxPayout(id_);
 
-        // // Check that the payout is less than or equal to the maximum payout,
-        // // Revert if not, otherwise return the payout
-        // if (payout > maxPayout(id_)) {
-        //     revert Auctioneer_MaxPayoutExceeded();
-        // } else {
-        //     return payout;
-        // }
-        return 0;
+        for (uint8 i = 0; i < prices.length; i++) {
+            payouts[i] = amountWithoutFee.mulDiv(markets[id_].scale[i], prices[i]);
+
+            // Check that the payout is less than or equal to the maximum payout,
+            // Revert if not, otherwise return the payout
+            if (payouts[i] > maxPayouts[i]) {
+                revert Auctioneer_MaxPayoutExceeded();
+            }
+        }
+
+        return payouts;
     }
 
     /// @inheritdoc IBondAuctioneer
     function maxAmountAccepted(uint256 id_, address referrer_) external view returns (uint256) {
-        // // Calculate maximum amount of quote tokens that correspond to max bond size
-        // // Maximum of the maxPayout and the remaining capacity converted to quote tokens
-        // BondMarket memory market = markets[id_];
-        // uint256 price = marketPrice(id_);
-        // uint256 quoteCapacity = market.capacityInQuote
-        //     ? market.capacity
-        //     : market.capacity.mulDiv(price, market.scale);
-        // uint256 maxQuote = market.maxPayout.mulDiv(price, market.scale);
-        // uint256 amountAccepted = quoteCapacity < maxQuote ? quoteCapacity : maxQuote;
+        // Calculate maximum amount of quote tokens that correspond to max bond size
+        // Maximum of the maxPayout and the remaining capacity converted to quote tokens
+        BondMarket memory market = markets[id_];
+        uint256[] memory prices = marketPrice(id_);
 
-        // // Take into account teller fees and return
-        // // Estimate fee based on amountAccepted. Fee taken will be slightly larger than
-        // // this given it will be taken off the larger amount, but this avoids rounding
-        // // errors with trying to calculate the exact amount.
-        // // Therefore, the maxAmountAccepted is slightly conservative.
-        // uint256 estimatedFee = amountAccepted.mulDiv(
-        //     _teller.getFee(referrer_),
-        //     ONE_HUNDRED_PERCENT
-        // );
+        uint256 quoteCapacity = 0;
+        uint256 maxQuote = 0;
 
-        // return amountAccepted + estimatedFee;
-        return 0;
+        for (uint8 i = 0; i < prices.length; i++) {
+            quoteCapacity += market.capacity[i].mulDiv(
+                prices[i],
+                market.scale[i]
+            );
+
+            maxQuote += market.maxPayout[i].mulDiv(
+                prices[i],
+                market.scale[i]
+            );
+        }
+
+        uint256 amountAccepted = quoteCapacity < maxQuote ? quoteCapacity : maxQuote;
+
+        // Take into account teller fees and return
+        // Estimate fee based on amountAccepted. Fee taken will be slightly larger than
+        // this given it will be taken off the larger amount, but this avoids rounding
+        // errors with trying to calculate the exact amount.
+        // Therefore, the maxAmountAccepted is slightly conservative.
+        uint256 estimatedFee = amountAccepted.mulDiv(
+            _teller.getFee(referrer_),
+            ONE_HUNDRED_PERCENT
+        );
+
+        return amountAccepted + estimatedFee;
     }
 
     /// @inheritdoc IBondFPA
-    function maxPayout(uint256 id_) public view override returns (uint256) {
-        // // Get current price
-        // uint256 price = marketPrice(id_);
+    function maxPayout(uint256 id_) public view override returns (uint256[] memory) {
+        BondMarket memory market = markets[id_];
+        uint256[] memory prices = marketPrice(id_);
 
-        // BondMarket memory market = markets[id_];
+        uint256[] memory maxPayouts = new uint256[](prices.length);
+        for (uint8 i = 0; i < prices.length; i++) {
+            maxPayouts[i] = market.maxPayout[i] > market.capacity[i]
+                ? market.capacity[i]
+                : market.maxPayout[i];
+        }
 
-        // // Convert capacity to payout token units for comparison with max payout
-        // uint256 capacity = market.capacityInQuote
-        //     ? market.capacity.mulDiv(market.scale, price)
-        //     : market.capacity;
-
-        // // Cap max payout at the remaining capacity
-        // return market.maxPayout > capacity ? capacity : market.maxPayout;
-        return 0;
+        return maxPayouts;
     }
 
     /// @inheritdoc IBondAuctioneer
@@ -445,8 +459,20 @@ abstract contract BondBaseFPA is IBondFPA, Auth {
     }
 
     /// @inheritdoc IBondAuctioneer
+    function isEmpty(uint256 id_) public view override returns (bool) {
+        bool isEmpty_ = false;
+        for (uint8 i = 0; i < markets[id_].capacity.length; i++) {
+            if (markets[id_].capacity[i] == 0) {
+                isEmpty_ = true;
+                break;
+            }
+        }
+        return isEmpty_;
+    }
+
+    /// @inheritdoc IBondAuctioneer
     function isLive(uint256 id_) public view override returns (bool) {
-        return (
+        return (!isEmpty(id_) &&
             terms[id_].conclusion > uint48(block.timestamp) &&
             terms[id_].start <= uint48(block.timestamp));
     }
@@ -467,8 +493,7 @@ abstract contract BondBaseFPA is IBondFPA, Auth {
     }
 
     /// @inheritdoc IBondAuctioneer
-    function currentCapacity(uint256 id_) external view override returns (uint256) {
-        // return markets[id_].capacity;
-        return 0;
+    function currentCapacity(uint256 id_) external view override returns (uint256[] memory) {
+        return markets[id_].capacity;
     }
 }
