@@ -72,17 +72,21 @@ contract BondAggregator is IBondAggregator, Auth {
     }
 
     /// @inheritdoc IBondAggregator
-    function registerMarket(ERC20 payoutToken_, ERC20 quoteToken_)
+    function registerMarket(ERC20[] memory payoutToken_, ERC20 quoteToken_)
         external
         override
         returns (uint256 marketId)
     {
         if (!_whitelist[msg.sender]) revert Aggregator_OnlyAuctioneer();
-        if (address(payoutToken_) == address(0) || address(quoteToken_) == address(0))
+        if (address(quoteToken_) == address(0))
             revert Aggregator_InvalidParams();
+        for (uint256 i; i < payoutToken_.length; ++i) {
+            if (address(payoutToken_[i]) == address(0)) revert Aggregator_InvalidParams();
+            marketsForPayout[address(payoutToken_[i])].push(marketId);
+        }
+    
         marketId = marketCounter;
         marketsToAuctioneers[marketId] = IBondAuctioneer(msg.sender);
-        marketsForPayout[address(payoutToken_)].push(marketId);
         marketsForQuote[address(quoteToken_)].push(marketId);
         ++marketCounter;
     }
@@ -95,13 +99,13 @@ contract BondAggregator is IBondAggregator, Auth {
     }
 
     /// @inheritdoc IBondAggregator
-    function marketPrice(uint256 id_) public view override returns (uint256) {
+    function marketPrice(uint256 id_) public view override returns (uint256[] memory) {
         IBondAuctioneer auctioneer = marketsToAuctioneers[id_];
         return auctioneer.marketPrice(id_);
     }
 
     /// @inheritdoc IBondAggregator
-    function marketScale(uint256 id_) external view override returns (uint256) {
+    function marketScale(uint256 id_) external view override returns (uint256[] memory) {
         IBondAuctioneer auctioneer = marketsToAuctioneers[id_];
         return auctioneer.marketScale(id_);
     }
@@ -111,7 +115,7 @@ contract BondAggregator is IBondAggregator, Auth {
         uint256 amount_,
         uint256 id_,
         address referrer_
-    ) public view override returns (uint256) {
+    ) public view override returns (uint256[] memory) {
         IBondAuctioneer auctioneer = marketsToAuctioneers[id_];
         return auctioneer.payoutFor(amount_, id_, referrer_);
     }
@@ -218,48 +222,6 @@ contract BondAggregator is IBondAggregator, Auth {
     }
 
     /// @inheritdoc IBondAggregator
-    function findMarketFor(
-        address payout_,
-        address quote_,
-        uint256 amountIn_,
-        uint256 minAmountOut_,
-        uint256 maxExpiry_
-    ) external view returns (uint256) {
-        uint256[] memory ids = marketsFor(payout_, quote_);
-        uint256 len = ids.length;
-        // uint256[] memory payouts = new uint256[](len);
-
-        uint256 highestOut;
-        uint256 id = type(uint256).max; // set to max so an empty set doesn't return 0, the first index
-        uint48 vesting;
-        uint256 maxPayout;
-        IBondAuctioneer auctioneer;
-        for (uint256 i; i < len; ++i) {
-            auctioneer = marketsToAuctioneers[ids[i]];
-            (, , , , vesting, maxPayout) = auctioneer.getMarketInfoForPurchase(ids[i]);
-
-            uint256 expiry = (vesting <= MAX_FIXED_TERM) ? block.timestamp + vesting : vesting;
-
-            if (expiry <= maxExpiry_) {
-                if (minAmountOut_ <= maxPayout) {
-                    try auctioneer.payoutFor(amountIn_, ids[i], address(0)) returns (
-                        uint256 payout
-                    ) {
-                        if (payout > highestOut && payout >= minAmountOut_) {
-                            highestOut = payout;
-                            id = ids[i];
-                        }
-                    } catch {
-                        // fail silently and try the next market
-                    }
-                }
-            }
-        }
-
-        return id;
-    }
-
-    /// @inheritdoc IBondAggregator
     function liveMarketsBy(
         address owner_,
         uint256 firstIndex_,
@@ -294,7 +256,7 @@ contract BondAggregator is IBondAggregator, Auth {
     }
 
     /// @inheritdoc IBondAggregator
-    function currentCapacity(uint256 id_) external view returns (uint256) {
+    function currentCapacity(uint256 id_) external view returns (uint256[] memory) {
         IBondAuctioneer auctioneer = marketsToAuctioneers[id_];
         return auctioneer.currentCapacity(id_);
     }

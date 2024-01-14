@@ -66,8 +66,8 @@ contract BondFixedExpiryTeller is BondBaseTeller, IBondFixedExpiryTeller {
     /// @return expiry      Timestamp when the payout will vest
     function _handlePayout(
         address recipient_,
-        uint256 payout_,
-        ERC20 underlying_,
+        uint256[] memory payout_,
+        ERC20[] memory underlying_,
         uint48 vesting_
     ) internal override returns (uint48 expiry) {
         // If there is no vesting time, the deposit is treated as an instant swap.
@@ -83,11 +83,14 @@ contract BondFixedExpiryTeller is BondBaseTeller, IBondFixedExpiryTeller {
         // is 9 days. when bob deposits on day 2, his term is 8 days.
         if (vesting_ > uint48(block.timestamp)) {
             expiry = vesting_;
+
             // Fixed-expiry bonds mint ERC-20 tokens
-            bondTokens[underlying_][expiry].mint(recipient_, payout_);
+            for (uint256 i = 0; i < payout_.length; i++) 
+                bondTokens[underlying_[i]][expiry].mint(recipient_, payout_[i]);
         } else {
             // If no expiry, then transfer payout directly to user
-            underlying_.safeTransfer(recipient_, payout_);
+            for (uint256 i = 0; i < payout_.length; i++)
+                underlying_[i].safeTransfer(recipient_, payout_[i]);
         }
     }
 
@@ -160,11 +163,11 @@ contract BondFixedExpiryTeller is BondBaseTeller, IBondFixedExpiryTeller {
     /* ========== TOKENIZATION ========== */
 
     /// @inheritdoc IBondFixedExpiryTeller
-    function deploy(ERC20 underlying_, uint48 expiry_)
+    function deploy(ERC20[] memory underlying_, uint48 expiry_)
         external
         override
         nonReentrant
-        returns (ERC20BondToken)
+        returns (ERC20BondToken[] memory)
     {
         // Expiry is rounded to the nearest day at 0000 UTC (in seconds) since bond tokens
         // are only unique to a day, not a specific timestamp.
@@ -173,36 +176,45 @@ contract BondFixedExpiryTeller is BondBaseTeller, IBondFixedExpiryTeller {
         // Revert if expiry is in the past
         if (uint256(expiry) < block.timestamp) revert Teller_InvalidParams();
 
+        ERC20BondToken[] memory bondTokens_ = new ERC20BondToken[](underlying_.length);
+
         // Create bond token if one doesn't already exist
-        ERC20BondToken bondToken = bondTokens[underlying_][expiry];
-        if (bondToken == ERC20BondToken(address(0))) {
-            (string memory name, string memory symbol) = _getNameAndSymbol(underlying_, expiry);
-            bytes memory tokenData = abi.encodePacked(
-                bytes32(bytes(name)),
-                bytes32(bytes(symbol)),
-                uint8(underlying_.decimals()),
-                underlying_,
-                uint256(expiry),
-                address(this)
-            );
-            bondToken = ERC20BondToken(address(bondTokenImplementation).clone(tokenData));
-            bondTokens[underlying_][expiry] = bondToken;
-            emit ERC20BondTokenCreated(bondToken, underlying_, expiry);
+        for (uint256 i = 0; i < underlying_.length; i++) {
+            bondTokens_[i] = bondTokens[underlying_[i]][expiry];
+            if (bondTokens_[i] == ERC20BondToken(address(0))) {
+                (string memory name, string memory symbol) = _getNameAndSymbol(underlying_[i], expiry);
+                bytes memory tokenData = abi.encodePacked(
+                    bytes32(bytes(name)),
+                    bytes32(bytes(symbol)),
+                    uint8(underlying_[i].decimals()),
+                    underlying_[i],
+                    uint256(expiry),
+                    address(this)
+                );
+                bondTokens_[i] = ERC20BondToken(address(bondTokenImplementation).clone(tokenData));
+                bondTokens[underlying_[i]][expiry] = bondTokens_[i];
+                emit ERC20BondTokenCreated(bondTokens_[i], underlying_[i], expiry);
+            }
         }
-        return bondToken;
+
+        return bondTokens_;
     }
 
     /// @inheritdoc IBondFixedExpiryTeller
-    function getBondTokenForMarket(uint256 id_) external view override returns (ERC20BondToken) {
+    function getBondTokensForMarket(uint256 id_) external view override returns (ERC20BondToken[] memory) {
         // Check that the id is for a market served by this teller
         if (address(_aggregator.getTeller(id_)) != address(this)) revert Teller_InvalidParams();
 
         // Get the underlying and expiry for the market
-        (, , ERC20 underlying, , uint48 expiry, ) = _aggregator
+        (, , ERC20[] memory underlying, , uint48 expiry, ) = _aggregator
             .getAuctioneer(id_)
             .getMarketInfoForPurchase(id_);
 
-        return bondTokens[underlying][expiry];
+        ERC20BondToken[] memory bondTokens_ = new ERC20BondToken[](underlying.length);
+        for (uint256 i = 0; i < underlying.length; i++)
+            bondTokens_[i] = bondTokens[underlying[i]][expiry];
+
+        return bondTokens_;
     }
 
     /// @inheritdoc IBondFixedExpiryTeller

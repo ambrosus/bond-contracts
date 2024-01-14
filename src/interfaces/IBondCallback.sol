@@ -14,7 +14,7 @@ interface IBondCallback {
     function callback(
         uint256 id_,
         uint256 inputAmount_,
-        uint256 outputAmount_
+        uint256[] calldata outputAmount_
     ) external;
 
     /// @notice         Returns the number of quote tokens received and payout tokens paid out for a market

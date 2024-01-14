@@ -45,7 +45,7 @@ interface IBondSDA is IBondAuctioneer {
 
     /// @notice Control variable adjustment data
     struct Adjustment {
-        uint256 change;
+        uint256[] change;
         uint48 lastAdjustment;
         uint48 timeToAdjusted; // how long until adjustment happens
         bool active;

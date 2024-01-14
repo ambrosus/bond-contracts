@@ -9,27 +9,27 @@ interface IBondOSDA is IBondAuctioneer {
     /// @notice Basic token and capacity information for a bond market
     struct BondMarket {
         address owner; // market owner. sends payout tokens, receives quote tokens (defaults to creator)
-        ERC20 payoutToken; // token to pay depositors with
+        ERC20[] payoutToken; // token to pay depositors with
         ERC20 quoteToken; // token to accept as payment
         address callbackAddr; // address to call for any operations on bond purchase. Must implement IBondCallback.
         bool capacityInQuote; // capacity limit is in payment token (true) or in payout (false, default)
-        uint256 capacity; // capacity remaining
-        uint256 maxPayout; // max payout tokens out in one order
-        uint256 sold; // payout tokens out
+        uint256[] capacity; // capacity remaining
+        uint256[] maxPayout; // max payout tokens out in one order
+        uint256[] sold; // payout tokens out
         uint256 purchased; // quote tokens in
     }
 
     /// @notice Information pertaining to pricing and time parameters for a bond market
     struct BondTerms {
-        IBondOracle oracle; // address to call for reference price. Must implement IBondOracle.
+        IBondOracle[]  oracle; // address to call for reference price. Must implement IBondOracle.
         uint48 start; // timestamp when market starts
         uint48 conclusion; // timestamp when market no longer offered
         uint48 vesting; // length of time from deposit to expiry if fixed-term, vesting timestamp if fixed-expiry
-        uint48 baseDiscount; // base discount from oracle price, with 3 decimals of precision. E.g. 10_000 = 10%
+        uint48[] baseDiscount; // base discount from oracle price, with 3 decimals of precision. E.g. 10_000 = 10%
         uint48 decaySpeed; // market price decay speed (discount achieved over a target deposit interval)
-        uint256 minPrice; // minimum price (hard floor for the market)
-        uint256 scale; // scaling factor for the market
-        uint256 oracleConversion; // conversion factor for oracle -> market price
+        uint256[] minPrice; // minimum price (hard floor for the market)
+        uint256[] scale; // scaling factor for the market
+        uint256[] oracleConversion; // conversion factor for oracle -> market price
     }
 
     /// @notice             Parameters to create a new bond market
@@ -51,15 +51,14 @@ interface IBondOSDA is IBondAuctioneer {
     /// @dev                        If start time is not provided (i.e. 0), the market will start immediately.
     /// @dev                    12. Market Duration (seconds) - Duration of the market in seconds.
     struct MarketParams {
-        ERC20 payoutToken;
+        ERC20[] payoutToken;
         ERC20 quoteToken;
         address callbackAddr;
-        IBondOracle oracle;
-        uint48 baseDiscount;
-        uint48 maxDiscountFromCurrent;
+        IBondOracle[] oracle;
+        uint48[] baseDiscount;
+        uint48[] maxDiscountFromCurrent;
         uint48 targetIntervalDiscount;
-        bool capacityInQuote;
-        uint256 capacity;
+        uint256[] capacity;
         uint48 depositInterval;
         uint48 vesting;
         uint48 start;
@@ -107,11 +106,11 @@ interface IBondOSDA is IBondAuctioneer {
     // ic = initial capacity
     //
     // if price is below minimum price, minimum price is returned
-    function marketPrice(uint256 id_) external view override returns (uint256);
+    function marketPrice(uint256 id_) external view override returns (uint256[] memory);
 
     /// @notice             Calculate max payout of the market in payout tokens
     /// @dev                Returns a dynamically calculated payout or the maximum set by the creator, whichever is less.
     /// @param id_          ID of market
     /// @return             Current max payout for the market in payout tokens
-    function maxPayout(uint256 id_) external view returns (uint256);
+    function maxPayout(uint256 id_) external view returns (uint256[] memory);
 }

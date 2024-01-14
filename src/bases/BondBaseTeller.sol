@@ -45,7 +45,7 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
     error Teller_InvalidParams();
 
     /* ========== EVENTS ========== */
-    event Bonded(uint256 indexed id, address indexed referrer, uint256 amount, uint256 payout);
+    event Bonded(uint256 indexed id, address indexed referrer, uint256 amount, uint256[] payout);
 
     /* ========== STATE VARIABLES ========== */
 
@@ -132,11 +132,11 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
         uint256 id_,
         uint256 amount_,
         uint256[] calldata minAmountOut_
-    ) external virtual nonReentrant returns (uint256, uint48) {
-        ERC20 payoutToken;
+    ) external virtual nonReentrant returns (uint256[] memory, uint48) {
+        ERC20[] memory payoutToken;
         ERC20 quoteToken;
         uint48 vesting;
-        uint256 payout;
+        uint256[] memory payout;
 
         // Calculate fees for purchase
         // 1. Calculate referrer fee
@@ -177,11 +177,11 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
     function _handleTransfers(
         uint256 id_,
         uint256 amount_,
-        uint256 payout_,
+        uint256[] memory payout_,
         uint256 feePaid_
     ) internal {
         // Get info from auctioneer
-        (address owner, address callbackAddr, ERC20 payoutToken, ERC20 quoteToken, , ) = _aggregator
+        (address owner, address callbackAddr, ERC20[] memory payoutToken, ERC20 quoteToken, , ) = _aggregator
             .getAuctioneer(id_)
             .getMarketInfoForPurchase(id_);
 
@@ -196,6 +196,11 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
         if (quoteToken.balanceOf(address(this)) < quoteBalance + amount_)
             revert Teller_UnsupportedToken();
 
+        // Remember balance of payout token before
+        uint256[] memory payoutBalance = new uint256[](payoutToken.length);
+        for (uint256 i; i < payoutToken.length; ++i)
+            payoutBalance[i] = payoutToken[i].balanceOf(address(this));
+
         // If callback address supplied, transfer tokens from teller to callback, then execute callback function,
         // and ensure proper amount of tokens transferred in.
         if (callbackAddr != address(0)) {
@@ -203,21 +208,26 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
             quoteToken.safeTransfer(callbackAddr, amountLessFee);
 
             // Call the callback function to receive payout tokens for payout
-            uint256 payoutBalance = payoutToken.balanceOf(address(this));
             IBondCallback(callbackAddr).callback(id_, amountLessFee, payout_);
 
             // Check to ensure that the callback sent the requested amount of payout tokens back to the teller
-            if (payoutToken.balanceOf(address(this)) < (payoutBalance + payout_))
-                revert Teller_InvalidCallback();
+            for (uint256 i; i < payoutToken.length; ++i) {
+                if (
+                    payoutToken[i].balanceOf(address(this)) <
+                    (payoutBalance[i] + payout_[i])
+                ) revert Teller_InvalidCallback();
+            }
         } else {
             // If no callback is provided, transfer tokens from market owner to this contract
             // for payout.
             // Check balance before and after to ensure full amount received, revert if not
             // Handles edge cases like fee-on-transfer tokens (which are not supported)
-            uint256 payoutBalance = payoutToken.balanceOf(address(this));
-            payoutToken.safeTransferFrom(owner, address(this), payout_);
-            if (payoutToken.balanceOf(address(this)) < (payoutBalance + payout_))
-                revert Teller_UnsupportedToken();
+            for (uint256 i; i < payoutToken.length; ++i) {
+                if (
+                    payoutToken[i].balanceOf(address(this)) <
+                    (payoutBalance[i] + payout_[i])
+                ) revert Teller_InvalidCallback();
+            }
 
             quoteToken.safeTransfer(owner, amountLessFee);
         }
@@ -234,8 +244,8 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
     /// @return expiry      Timestamp when the payout will vest
     function _handlePayout(
         address recipient_,
-        uint256 payout_,
-        ERC20 underlying_,
+        uint256[] memory payout_,
+        ERC20[] memory underlying_,
         uint48 vesting_
     ) internal virtual returns (uint48 expiry);
 

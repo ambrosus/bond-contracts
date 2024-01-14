@@ -32,12 +32,12 @@ interface IBondAggregator {
     //
     // if price is below minimum price, minimum price is returned
     // this is enforced on deposits by manipulating total debt (see _decay())
-    function marketPrice(uint256 id_) external view returns (uint256);
+    function marketPrice(uint256 id_) external view returns (uint256[] memory);
 
     /// @notice             Scale value to use when converting between quote token and payout token amounts with marketPrice()
     /// @param id_          ID of market
     /// @return             Scaling factor for market in configured decimals
-    function marketScale(uint256 id_) external view returns (uint256);
+    function marketScale(uint256 id_) external view returns (uint256[] memory);
 
     /// @notice             Payout due for amount of quote tokens
     /// @dev                Accounts for debt and control variable decay so it is up to date
@@ -50,7 +50,7 @@ interface IBondAggregator {
         uint256 amount_,
         uint256 id_,
         address referrer_
-    ) external view returns (uint256);
+    ) external view returns (uint256[] memory);
 
     /// @notice             Returns maximum amount of quote token accepted by the market
     /// @param id_          ID of market
@@ -96,24 +96,9 @@ interface IBondAggregator {
     /// @param quote_       Address of quote token
     function marketsFor(address payout_, address quote_) external view returns (uint256[] memory);
 
-    /// @notice                 Returns the market ID with the highest current payoutToken payout for depositing quoteToken
-    /// @param payout_          Address of payout token
-    /// @param quote_           Address of quote token
-    /// @param amountIn_        Amount of quote tokens to deposit
-    /// @param minAmountOut_    Minimum amount of payout tokens to receive as payout
-    /// @param maxExpiry_       Latest acceptable vesting timestamp for bond
-    ///                         Inputting the zero address will take into account just the protocol fee.
-    function findMarketFor(
-        address payout_,
-        address quote_,
-        uint256 amountIn_,
-        uint256 minAmountOut_,
-        uint256 maxExpiry_
-    ) external view returns (uint256 id);
-
     /// @notice             Returns the Teller that services the market ID
     function getTeller(uint256 id_) external view returns (IBondTeller);
 
     /// @notice             Returns current capacity of a market
-    function currentCapacity(uint256 id_) external view returns (uint256);
+    function currentCapacity(uint256 id_) external view returns (uint256[] memory);
 }

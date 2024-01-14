@@ -55,8 +55,8 @@ contract BondFixedTermTeller is BondBaseTeller, IBondFixedTermTeller, ERC1155 {
     /// @return expiry      Timestamp when the payout will vest
     function _handlePayout(
         address recipient_,
-        uint256 payout_,
-        ERC20 payoutToken_,
+        uint256[] memory payout_,
+        ERC20[] memory payoutToken_,
         uint48 vesting_
     ) internal override returns (uint48 expiry) {
         // If there is no vesting time, the deposit is treated as an instant swap.
@@ -74,20 +74,23 @@ contract BondFixedTermTeller is BondBaseTeller, IBondFixedTermTeller, ERC1155 {
             // Normalizing fixed term vesting timestamps to the same time each day
             expiry = ((vesting_ + uint48(block.timestamp)) / uint48(1 days)) * uint48(1 days);
 
-            // Fixed-term user payout information is handled in BondTeller.
-            // Teller mints ERC-1155 bond tokens for user.
-            uint256 tokenId = getTokenId(payoutToken_, expiry);
+            for (uint256 i; i < payoutToken_.length; i++) {
+                // Fixed-term user payout information is handled in BondTeller.
+                // Teller mints ERC-1155 bond tokens for user.
+                uint256 tokenId = getTokenId(payoutToken_[i], expiry);
 
-            // Create new bond token if it doesn't exist yet
-            if (!tokenMetadata[tokenId].active) {
-                _deploy(tokenId, payoutToken_, expiry);
-            }
+                // Create new bond token if it doesn't exist yet
+                if (!tokenMetadata[tokenId].active) {
+                    _deploy(tokenId, payoutToken_[i], expiry);
+                }
 
-            // Mint bond token to recipient
-            _mintToken(recipient_, tokenId, payout_);
+                // Mint bond token to recipient
+                _mintToken(recipient_, tokenId, payout_[i]);
+            }            
         } else {
             // If no expiry, then transfer payout directly to user
-            payoutToken_.safeTransfer(recipient_, payout_);
+            for (uint256 i; i < payoutToken_.length; i++)
+                payoutToken_[i].safeTransfer(recipient_, payout_[i]);
         }
     }
 

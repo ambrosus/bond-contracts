@@ -28,12 +28,12 @@ interface IBondFixedExpiryTeller {
     /// @param underlying_  ERC20 token redeemable when the bond token vests
     /// @param expiry_      Timestamp at which the bond token can be redeemed for the underlying token
     /// @return             Address of the ERC20 bond token being created
-    function deploy(ERC20 underlying_, uint48 expiry_) external returns (ERC20BondToken);
+    function deploy(ERC20[] memory underlying_, uint48 expiry_) external returns (ERC20BondToken[] memory);
 
     /// @notice         Get the ERC20BondToken contract corresponding to a market
     /// @param id_      ID of the market
     /// @return         ERC20BondToken contract address
-    function getBondTokenForMarket(uint256 id_) external view returns (ERC20BondToken);
+    function getBondTokensForMarket(uint256 id_) external view returns (ERC20BondToken[] memory);
 
     /// @notice             Get the ERC20BondToken contract corresponding to an (underlying, expiry) pair, reverts if no token exists
     /// @param underlying_  ERC20 token redeemable when the bond token vests

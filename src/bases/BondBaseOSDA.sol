@@ -56,7 +56,7 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
 
     event MarketCreated(
         uint256 indexed id,
-        address indexed payoutToken,
+        address[] indexed payoutToken,
         address indexed quoteToken,
         uint48 vesting
     );
@@ -140,37 +140,51 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
         market.quoteToken = params_.quoteToken;
         market.payoutToken = params_.payoutToken;
         market.callbackAddr = params_.callbackAddr;
-        market.capacityInQuote = params_.capacityInQuote;
         market.capacity = params_.capacity;
 
         // Check that the base discount is in bounds (cannot be 100% or greater)
         BondTerms storage term = terms[marketId];
-        if (
-            params_.baseDiscount >= ONE_HUNDRED_PERCENT ||
-            params_.baseDiscount > params_.maxDiscountFromCurrent
-        ) revert Auctioneer_InvalidParams();
-        term.baseDiscount = params_.baseDiscount;
+        for (uint8 i = 0; i < params_.baseDiscount.length; i++) {
+            if (
+                params_.baseDiscount[i] >= ONE_HUNDRED_PERCENT ||
+                params_.baseDiscount[i] > params_.maxDiscountFromCurrent[i]
+            ) revert Auctioneer_InvalidParams();
+            term.baseDiscount[i] = params_.baseDiscount[i];
+        }
+        
 
-        // Validate oracle and get price variables
-        (uint256 price, uint256 oracleConversion, uint256 scale) = _validateOracle(
-            marketId,
-            params_.oracle,
-            params_.quoteToken,
-            params_.payoutToken,
-            params_.baseDiscount
-        );
+        uint256[] memory oracleConversion = new uint256[](params_.oracle.length);
+        uint256[] memory scale = new uint256[](params_.oracle.length);
+        uint256[] memory minPrice = new uint256[](params_.oracle.length);
+        
+        for (uint8 i = 0; i < params_.oracle.length; i++) {
+            // Validate oracle and get price variables
+            (uint256 price, uint256 oracleConversion_, uint256 scale_) = _validateOracle(
+                marketId,
+                params_.oracle[i],
+                params_.quoteToken,
+                params_.payoutToken[i],
+                params_.baseDiscount[i]
+            );
+
+            // Set oracle conversion and scale variables
+            oracleConversion[i] = oracleConversion_;
+            scale[i] = scale_;
+
+            // Check that the max discount from current price is in bounds (cannot be greater than 100%)
+            if (params_.maxDiscountFromCurrent[i] > ONE_HUNDRED_PERCENT) revert Auctioneer_InvalidParams();
+
+            // Calculate the minimum price for the market
+            minPrice[i] = price.mulDivUp(
+                uint256(ONE_HUNDRED_PERCENT - params_.maxDiscountFromCurrent[i]),
+                uint256(ONE_HUNDRED_PERCENT)
+            );
+        }
+        
         term.oracle = params_.oracle;
         term.oracleConversion = oracleConversion;
         term.scale = scale;
-
-        // Check that the max discount from current price is in bounds (cannot be greater than 100%)
-        if (params_.maxDiscountFromCurrent > ONE_HUNDRED_PERCENT) revert Auctioneer_InvalidParams();
-
-        // Calculate the minimum price for the market
-        term.minPrice = price.mulDivUp(
-            uint256(ONE_HUNDRED_PERCENT - params_.maxDiscountFromCurrent),
-            uint256(ONE_HUNDRED_PERCENT)
-        );
+        term.minPrice = minPrice;
 
         // Check time bounds
         if (
@@ -180,19 +194,13 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
         ) revert Auctioneer_InvalidParams();
 
         // Calculate the maximum payout amount for this market, determined by deposit interval
-        uint256 capacity = params_.capacityInQuote
-            ? params_.capacity.mulDiv(
-                scale,
-                price.mulDivUp(
-                    uint256(ONE_HUNDRED_PERCENT - params_.baseDiscount),
-                    uint256(ONE_HUNDRED_PERCENT)
-                )
-            )
-            : params_.capacity;
-        market.maxPayout = capacity.mulDiv(
-            uint256(params_.depositInterval),
-            uint256(params_.duration)
-        );
+        for (uint8 i = 0; i < params_.capacity.length; i++) {
+            market.maxPayout[i] = params_.capacity[i].mulDiv(
+                uint256(params_.depositInterval),
+                uint256(params_.duration)
+            );
+        }
+        
 
         // Check target interval discount in bounds
         if (params_.targetIntervalDiscount > ONE_HUNDRED_PERCENT) revert Auctioneer_InvalidParams();
@@ -208,10 +216,15 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
         term.start = start;
         term.conclusion = start + params_.duration;
 
+        address[] memory payoutTokensAddresses = new address[](params_.payoutToken.length);
+        for (uint8 i = 0; i < params_.payoutToken.length; i++) {
+            payoutTokensAddresses[i] = address(params_.payoutToken[i]);
+        }
+
         // Emit market created event
         emit MarketCreated(
             marketId,
-            address(params_.payoutToken),
+            payoutTokensAddresses,
             address(params_.quoteToken),
             params_.vesting
         );
@@ -363,7 +376,7 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
         uint256 id_,
         uint256 amount_,
         uint256[] calldata minAmountOut_
-    ) external override returns (uint256 payout) {
+    ) external override returns (uint256[] memory payout) {
         if (msg.sender != address(_teller)) revert Auctioneer_NotAuthorized();
 
         BondMarket storage market = markets[id_];
@@ -377,43 +390,46 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
         if (!isLive(id_)) revert Auctioneer_MarketNotActive();
 
         // Retrieve price and calculate payout
-        uint256 price = marketPrice(id_);
+        uint256[] memory price = marketPrice(id_);
 
-        // Payout for the deposit = amount / price
-        //
-        // where:
-        // payout = payout tokens out
-        // amount = quote tokens in
-        // price = quote tokens : payout token (i.e. 200 QUOTE : BASE), adjusted for scaling
-        payout = amount_.mulDiv(term.scale, price);
+        for (uint8 i = 0; i < market.payoutToken.length; i++) {
+            // Payout for the deposit = amount / price
+            //
+            // where:
+            // payout = payout tokens out
+            // amount = quote tokens in
+            // price = quote tokens : payout token (i.e. 200 QUOTE : BASE), adjusted for scaling
+            payout[i] = amount_.mulDiv(term.scale[i], price[i]);
 
-        // Payout must be greater than user inputted minimum
-        if (payout < minAmountOut_) revert Auctioneer_AmountLessThanMinimum();
+            // Payout must be greater than user inputted minimum
+            if (payout[i] < minAmountOut_[i]) revert Auctioneer_AmountLessThanMinimum();
 
-        // Markets have a max payout amount, capping size because deposits
-        // do not experience slippage. max payout is recalculated upon tuning
-        if (payout > market.maxPayout) revert Auctioneer_MaxPayoutExceeded();
+            // Markets have a max payout amount, capping size because deposits
+            // do not experience slippage. max payout is recalculated upon tuning
+            if (payout[i] > market.maxPayout[i]) revert Auctioneer_MaxPayoutExceeded();
 
-        // Update Capacity
+            // Update Capacity
 
-        // Capacity is either the number of payout tokens that the market can sell
-        // (if capacity in quote is false),
-        //
-        // or the number of quote tokens that the market can buy
-        // (if capacity in quote is true)
+            // Capacity is either the number of payout tokens that the market can sell
+            // (if capacity in quote is false),
+            //
+            // or the number of quote tokens that the market can buy
+            // (if capacity in quote is true)
 
-        // If amount/payout is greater than capacity remaining, revert
-        if (market.capacityInQuote ? amount_ > market.capacity : payout > market.capacity)
-            revert Auctioneer_NotEnoughCapacity();
-        unchecked {
-            // Capacity is decreased by the deposited or paid amount
-            market.capacity -= market.capacityInQuote ? amount_ : payout;
+            // If amount/payout is greater than capacity remaining, revert
+            if (payout[i] > market.capacity[i])
+                revert Auctioneer_NotEnoughCapacity();
+            unchecked {
+                // Capacity is decreased by the deposited or paid amount
+                market.capacity[i] -= payout[i];
 
-            // Markets keep track of how many quote tokens have been
-            // purchased, and how many payout tokens have been sold
-            market.purchased += amount_;
-            market.sold += payout;
+                // Markets keep track of how many quote tokens have been sold
+                market.sold[i] += payout[i];
+            }
         }
+
+        // Markets keep track of how many quote tokens have been purchased
+        market.purchased += amount_;
     }
 
     /* ========== INTERNAL DEPO FUNCTIONS ========== */
@@ -422,7 +438,7 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
     /// @dev             Closing a market sets capacity to 0 and immediately stops bonding
     function _close(uint256 id_) internal {
         terms[id_].conclusion = uint48(block.timestamp);
-        markets[id_].capacity = 0;
+        markets[id_].capacity = new uint256[](markets[id_].capacity.length);
 
         emit MarketClosed(id_);
     }
@@ -433,64 +449,69 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
     /// @dev                See marketPrice() in IBondOSDA for explanation of price computation
     /// @param id_          Market ID
     /// @return             Price for market as a ratio of quote tokens to payout tokens with 36 decimals
-    function _currentMarketPrice(uint256 id_) internal view returns (uint256) {
+    function _currentMarketPrice(uint256 id_) internal view returns (uint256[] memory) {
         BondMarket memory market = markets[id_];
         BondTerms memory term = terms[id_];
-
-        // Get price from oracle, apply oracle conversion factor, and apply target discount
-        uint256 price = (term.oracle.currentPrice(id_) * term.oracleConversion).mulDivUp(
-            (ONE_HUNDRED_PERCENT - term.baseDiscount),
-            ONE_HUNDRED_PERCENT
-        );
-
-        // Revert if price is 0
-        if (price == 0) revert Auctioneer_OraclePriceZero();
-
-        // Calculate initial capacity based on remaining capacity and amount sold/purchased up to this point
-        uint256 initialCapacity = market.capacity +
-            (market.capacityInQuote ? market.purchased : market.sold);
+        
+        uint256[] memory price = new uint256[](market.payoutToken.length);
 
         // Compute seconds remaining until market will conclude
         uint256 conclusion = uint256(term.conclusion);
         uint256 timeRemaining = conclusion - block.timestamp;
 
-        // Calculate expectedCapacity as the capacity expected to be bought or sold up to this point
-        // Higher than current capacity means the market is undersold, lower than current capacity means the market is oversold
-        uint256 expectedCapacity = initialCapacity.mulDiv(
-            timeRemaining,
-            conclusion - uint256(term.start)
-        );
+        for (uint8 i = 0; i < market.payoutToken.length; i++) {
+            // Get price from oracle, apply oracle conversion factor, and apply target discount
+            price[i] = (term.oracle[i].currentPrice(id_) * term.oracleConversion[i]).mulDivUp(
+                (ONE_HUNDRED_PERCENT - term.baseDiscount[i]),
+                ONE_HUNDRED_PERCENT
+            );
 
-        // Price is increased or decreased based on how far the market is ahead or behind
-        // Intuition:
-        // If the time neutral capacity is higher than the initial capacity, then the market is undersold and price should be discounted
-        // If the time neutral capacity is lower than the initial capacity, then the market is oversold and price should be increased
-        //
-        // This implementation uses a linear price decay
-        // P(t) = P(0) * (1 + k * (X(t) - C(t) / C(0)))
-        // P(t): price at time t
-        // P(0): initial/target price of the market provided by oracle + base discount (see IOSDA.MarketParams)
-        // k: decay speed of the market
-        // k = L / I * d, where L is the duration/length of the market, I is the deposit interval, and d is the target interval discount.
-        // X(t): expected capacity of the market at time t.
-        // X(t) = C(0) * t / L.
-        // C(t): actual capacity of the market at time t.
-        // C(0): initial capacity of the market provided by the user (see IOSDA.MarketParams).
-        uint256 adjustment;
-        if (expectedCapacity > market.capacity) {
-            adjustment =
-                ONE_HUNDRED_PERCENT +
-                (term.decaySpeed * (expectedCapacity - market.capacity)) /
-                initialCapacity;
-        } else {
-            // If actual capacity is greater than expected capacity, we need to check for underflows
-            // The adjustment has a minimum value of 0 since that will reduce the price to 0 as well.
-            uint256 factor = (term.decaySpeed * (market.capacity - expectedCapacity)) /
-                initialCapacity;
-            adjustment = ONE_HUNDRED_PERCENT > factor ? ONE_HUNDRED_PERCENT - factor : 0;
+            // Revert if price is 0
+            if (price[i] == 0) revert Auctioneer_OraclePriceZero();
+
+            // Calculate initial capacity based on remaining capacity and amount sold/purchased up to this point
+            uint256 initialCapacity = market.capacity[i] + market.sold[i];
+
+            // Calculate expectedCapacity as the capacity expected to be bought or sold up to this point
+            // Higher than current capacity means the market is undersold, lower than current capacity means the market is oversold
+            uint256 expectedCapacity = initialCapacity.mulDiv(
+                timeRemaining,
+                conclusion - uint256(term.start)
+            );
+
+            // Price is increased or decreased based on how far the market is ahead or behind
+            // Intuition:
+            // If the time neutral capacity is higher than the initial capacity, then the market is undersold and price should be discounted
+            // If the time neutral capacity is lower than the initial capacity, then the market is oversold and price should be increased
+            //
+            // This implementation uses a linear price decay
+            // P(t) = P(0) * (1 + k * (X(t) - C(t) / C(0)))
+            // P(t): price at time t
+            // P(0): initial/target price of the market provided by oracle + base discount (see IOSDA.MarketParams)
+            // k: decay speed of the market
+            // k = L / I * d, where L is the duration/length of the market, I is the deposit interval, and d is the target interval discount.
+            // X(t): expected capacity of the market at time t.
+            // X(t) = C(0) * t / L.
+            // C(t): actual capacity of the market at time t.
+            // C(0): initial capacity of the market provided by the user (see IOSDA.MarketParams).
+            uint256 adjustment;
+            if (expectedCapacity > market.capacity[i]) {
+                adjustment =
+                    ONE_HUNDRED_PERCENT +
+                    (term.decaySpeed * (expectedCapacity - market.capacity[i])) /
+                    initialCapacity;
+            } else {
+                // If actual capacity is greater than expected capacity, we need to check for underflows
+                // The adjustment has a minimum value of 0 since that will reduce the price to 0 as well.
+                uint256 factor = (term.decaySpeed * (market.capacity[i] - expectedCapacity)) /
+                    initialCapacity;
+                adjustment = ONE_HUNDRED_PERCENT > factor ? ONE_HUNDRED_PERCENT - factor : 0;
+            }
+
+            price[i] = price[i].mulDivUp(adjustment, ONE_HUNDRED_PERCENT);
         }
 
-        return price.mulDivUp(adjustment, ONE_HUNDRED_PERCENT);
+        return price;
     }
 
     /* ========== INTERNAL VIEW FUNCTIONS ========== */
@@ -520,10 +541,10 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
         returns (
             address owner,
             address callbackAddr,
-            ERC20 payoutToken,
+            ERC20[] memory payoutToken,
             ERC20 quoteToken,
             uint48 vesting,
-            uint256 maxPayout_
+            uint256[] memory maxPayout_
         )
     {
         BondMarket memory market = markets[id_];
@@ -538,14 +559,19 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
     }
 
     /// @inheritdoc IBondOSDA
-    function marketPrice(uint256 id_) public view override returns (uint256) {
-        uint256 price = _currentMarketPrice(id_);
+    function marketPrice(uint256 id_) public view override returns (uint256[] memory) {
+        uint256[] memory prices = _currentMarketPrice(id_);
 
-        return (price > terms[id_].minPrice) ? price : terms[id_].minPrice;
+        for (uint8 i = 0; i < prices.length; i++) {
+            // If price is below minimum price, minimum price is returned
+            if (prices[i] < terms[id_].minPrice[i]) prices[i] = terms[id_].minPrice[i];
+        }
+
+        return prices;
     }
 
     /// @inheritdoc IBondAuctioneer
-    function marketScale(uint256 id_) external view override returns (uint256) {
+    function marketScale(uint256 id_) external view override returns (uint256[] memory) {
         return terms[id_].scale;
     }
 
@@ -554,35 +580,30 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
         uint256 amount_,
         uint256 id_,
         address referrer_
-    ) public view override returns (uint256) {
-        /// Calculate the payout for the given amount of tokens
-        uint256 fee = amount_.mulDiv(_teller.getFee(referrer_), 1e5);
-        uint256 payout = (amount_ - fee).mulDiv(terms[id_].scale, marketPrice(id_));
+    ) public view override returns (uint256[] memory payouts) {
+        uint256[] memory prices = marketPrice(id_);
+        uint256[] memory maxPayout_ = maxPayout(id_);
 
-        /// Check that the payout is less than or equal to the maximum payout,
-        /// Revert if not, otherwise return the payout
-        if (payout > maxPayout(id_)) {
-            revert Auctioneer_MaxPayoutExceeded();
-        } else {
-            return payout;
+        for (uint8 i = 0; i < prices.length; i++) {
+            // Calculate payout for the given amount of tokens
+            uint256 fee = amount_.mulDiv(_teller.getFee(referrer_), 1e5);
+            payouts[i] = (amount_ - fee).mulDiv(terms[id_].scale[i], prices[i]);
+
+            // Check that the payout is less than or equal to the maximum payout,
+            // Revert if not, otherwise return the payout
+            if (payouts[i] > maxPayout_[i]) revert Auctioneer_MaxPayoutExceeded();
         }
     }
 
     /// @inheritdoc IBondOSDA
-    function maxPayout(uint256 id_) public view override returns (uint256) {
+    function maxPayout(uint256 id_) public view override returns (uint256[] memory maxPayout_) {
         // Get current price
-        uint256 price = marketPrice(id_);
-
         BondMarket memory market = markets[id_];
-        BondTerms memory term = terms[id_];
 
-        // Convert capacity to payout token units for comparison with max payout
-        uint256 capacity = market.capacityInQuote
-            ? market.capacity.mulDiv(term.scale, price)
-            : market.capacity;
-
-        // Cap max payout at the remaining capacity
-        return market.maxPayout > capacity ? capacity : market.maxPayout;
+        for (uint8 i = 0; i < market.payoutToken.length; i++) {
+            // Cap max payout at the remaining capacity
+            maxPayout_[i] = market.maxPayout[i] > market.capacity[i] ? market.capacity[i] : market.maxPayout[i];
+        }
     }
 
     /// @inheritdoc IBondAuctioneer
@@ -591,11 +612,15 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
         // Maximum of the maxPayout and the remaining capacity converted to quote tokens
         BondMarket memory market = markets[id_];
         BondTerms memory term = terms[id_];
-        uint256 price = marketPrice(id_);
-        uint256 quoteCapacity = market.capacityInQuote
-            ? market.capacity
-            : market.capacity.mulDiv(price, term.scale);
-        uint256 maxQuote = market.maxPayout.mulDiv(price, term.scale);
+        uint256[] memory price = marketPrice(id_);
+        uint256 quoteCapacity = 0;
+        uint256 maxQuote = 0;
+
+        for (uint8 i = 0; i < market.payoutToken.length; i++) {
+            quoteCapacity += market.capacity[i].mulDiv(price[i], term.scale[i]);
+            maxQuote += market.maxPayout[i].mulDiv(price[i], term.scale[i]);
+        }
+
         uint256 amountAccepted = quoteCapacity < maxQuote ? quoteCapacity : maxQuote;
 
         // Take into account teller fees and return
@@ -618,8 +643,20 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
     }
 
     /// @inheritdoc IBondAuctioneer
+    function isEmpty(uint256 id_) public view override returns (bool) {
+        bool isEmpty_ = false;
+        for (uint8 i = 0; i < markets[id_].capacity.length; i++) {
+            if (markets[id_].capacity[i] == 0) {
+                isEmpty_ = true;
+                break;
+            }
+        }
+        return isEmpty_;
+    }
+
+    /// @inheritdoc IBondAuctioneer
     function isLive(uint256 id_) public view override returns (bool) {
-        return (markets[id_].capacity != 0 &&
+        return (!isEmpty(id_) &&
             terms[id_].conclusion > uint48(block.timestamp) &&
             terms[id_].start <= uint48(block.timestamp));
     }
@@ -640,7 +677,7 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
     }
 
     /// @inheritdoc IBondAuctioneer
-    function currentCapacity(uint256 id_) external view override returns (uint256) {
+    function currentCapacity(uint256 id_) external view override returns (uint256[] memory) {
         return markets[id_].capacity;
     }
 }
