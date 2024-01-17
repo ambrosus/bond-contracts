@@ -56,9 +56,10 @@ contract BondFixedExpiryFPA is BondBaseFPA {
         // Create market with provided params
         uint256 marketId = _createMarket(params);
 
+        // TODO: FIXME
         // Create bond token (ERC20 for fixed expiry) if not instant swap
-        if (params.vesting != 0)
-            IBondFixedExpiryTeller(address(_teller)).deploy(params.payoutToken, params.vesting);
+        // if (params.vesting != 0)
+        //     IBondFixedExpiryTeller(address(_teller)).deploy(params.payoutToken, params.vesting);
 
         // Return market ID
         return marketId;

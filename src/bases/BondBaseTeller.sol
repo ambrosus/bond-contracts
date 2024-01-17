@@ -198,7 +198,7 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
 
         // Remember balance of payout token before
         uint256[] memory payoutBalance = new uint256[](payoutToken.length);
-        for (uint256 i; i < payoutToken.length; ++i)
+        for (uint8 i = 0; i < payout_.length; ++i)
             payoutBalance[i] = payoutToken[i].balanceOf(address(this));
 
         // If callback address supplied, transfer tokens from teller to callback, then execute callback function,
@@ -211,7 +211,7 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
             IBondCallback(callbackAddr).callback(id_, amountLessFee, payout_);
 
             // Check to ensure that the callback sent the requested amount of payout tokens back to the teller
-            for (uint256 i; i < payoutToken.length; ++i) {
+            for (uint8 i = 0; i < payout_.length; ++i) {
                 if (
                     payoutToken[i].balanceOf(address(this)) <
                     (payoutBalance[i] + payout_[i])
@@ -222,11 +222,12 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
             // for payout.
             // Check balance before and after to ensure full amount received, revert if not
             // Handles edge cases like fee-on-transfer tokens (which are not supported)
-            for (uint256 i; i < payoutToken.length; ++i) {
+            for (uint8 i = 0; i < payout_.length; ++i) {
+                payoutToken[i].safeTransferFrom(owner, address(this), payout_[i]);
                 if (
                     payoutToken[i].balanceOf(address(this)) <
                     (payoutBalance[i] + payout_[i])
-                ) revert Teller_InvalidCallback();
+                ) revert Teller_UnsupportedToken();
             }
 
             quoteToken.safeTransfer(owner, amountLessFee);

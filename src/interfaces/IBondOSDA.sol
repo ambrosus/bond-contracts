@@ -12,7 +12,6 @@ interface IBondOSDA is IBondAuctioneer {
         ERC20[] payoutToken; // token to pay depositors with
         ERC20 quoteToken; // token to accept as payment
         address callbackAddr; // address to call for any operations on bond purchase. Must implement IBondCallback.
-        bool capacityInQuote; // capacity limit is in payment token (true) or in payout (false, default)
         uint256[] capacity; // capacity remaining
         uint256[] maxPayout; // max payout tokens out in one order
         uint256[] sold; // payout tokens out

@@ -44,28 +44,28 @@ contract BondFixedTermFPA is BondBaseFPA {
             ERC20[] memory payoutToken,
             ERC20 quoteToken,
             address callbackAddr,
-            bool capacityInQuote,
             uint256[] memory capacity,
             uint256[] memory formattedPrice,
             uint48 depositInterval,
             uint48 vesting,
             uint48 start,
             uint48 duration,
-            int8[] memory scaleAdjustment
-        ) = abi.decode(params_, (ERC20[], ERC20, address, bool, uint256[], uint256[], uint48, uint48, uint48, uint48, int8[]));
+            int8[] memory scaleAdjustment,
+            uint8 payoutTokensNumber
+        ) = abi.decode(params_, (ERC20[], ERC20, address, uint256[], uint256[], uint48, uint48, uint48, uint48, int8[], uint8));
 
         MarketParams memory params = MarketParams({
             payoutToken: payoutToken,
             quoteToken: quoteToken,
             callbackAddr: callbackAddr,
-            capacityInQuote: capacityInQuote,
             capacity: capacity,
             formattedPrice: formattedPrice,
             depositInterval: depositInterval,
             vesting: vesting,
             start: start,
             duration: duration,
-            scaleAdjustment: scaleAdjustment
+            scaleAdjustment: scaleAdjustment,
+            payoutTokensNumber: payoutTokensNumber
         });
 
         // Check that the vesting parameter is valid for a fixed-term market

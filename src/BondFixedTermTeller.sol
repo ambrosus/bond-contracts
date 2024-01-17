@@ -74,22 +74,21 @@ contract BondFixedTermTeller is BondBaseTeller, IBondFixedTermTeller, ERC1155 {
             // Normalizing fixed term vesting timestamps to the same time each day
             expiry = ((vesting_ + uint48(block.timestamp)) / uint48(1 days)) * uint48(1 days);
 
-            for (uint256 i; i < payoutToken_.length; i++) {
+            for (uint8 i = 0; i < payout_.length; i++) {
                 // Fixed-term user payout information is handled in BondTeller.
                 // Teller mints ERC-1155 bond tokens for user.
                 uint256 tokenId = getTokenId(payoutToken_[i], expiry);
 
                 // Create new bond token if it doesn't exist yet
-                if (!tokenMetadata[tokenId].active) {
+                if (!tokenMetadata[tokenId].active)
                     _deploy(tokenId, payoutToken_[i], expiry);
-                }
 
                 // Mint bond token to recipient
                 _mintToken(recipient_, tokenId, payout_[i]);
             }            
         } else {
             // If no expiry, then transfer payout directly to user
-            for (uint256 i; i < payoutToken_.length; i++)
+            for (uint8 i = 0; i < payout_.length; i++)
                 payoutToken_[i].safeTransfer(recipient_, payout_[i]);
         }
     }

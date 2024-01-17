@@ -62,7 +62,6 @@ interface IBondFPA is IBondAuctioneer {
         ERC20[] payoutToken;
         ERC20 quoteToken;
         address callbackAddr;
-        bool capacityInQuote;
         uint256[] capacity;
         uint256[] formattedPrice;
         uint48 depositInterval;
@@ -70,6 +69,7 @@ interface IBondFPA is IBondAuctioneer {
         uint48 start;
         uint48 duration;
         int8[] scaleAdjustment;
+        uint8 payoutTokensNumber;
     }
 
     /// @notice Set the minimum market duration
