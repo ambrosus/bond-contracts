@@ -54,12 +54,7 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
 
     /* ========== EVENTS ========== */
 
-    event MarketCreated(
-        uint256 indexed id,
-        address[] indexed payoutToken,
-        address indexed quoteToken,
-        uint48 vesting
-    );
+    event MarketCreated(uint256 indexed id, address[] indexed payoutToken, address indexed quoteToken, uint48 vesting);
     event MarketClosed(uint256 indexed id);
     event Tuned(uint256 indexed id, uint256 oldControlVariable, uint256 newControlVariable);
 
@@ -128,8 +123,7 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
             if (!callbackAuthorized[msg.sender] && params_.callbackAddr != address(0))
                 revert Auctioneer_NotAuthorized();
             // Start time must be zero or in the future
-            if (params_.start > 0 && params_.start < block.timestamp)
-                revert Auctioneer_InvalidParams();
+            if (params_.start > 0 && params_.start < block.timestamp) revert Auctioneer_InvalidParams();
         }
         // Register new market on aggregator and get marketId
         uint256 marketId = _aggregator.registerMarket(params_.payoutToken, params_.quoteToken);
@@ -151,12 +145,11 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
             ) revert Auctioneer_InvalidParams();
             term.baseDiscount[i] = params_.baseDiscount[i];
         }
-        
 
         uint256[] memory oracleConversion = new uint256[](params_.oracle.length);
         uint256[] memory scale = new uint256[](params_.oracle.length);
         uint256[] memory minPrice = new uint256[](params_.oracle.length);
-        
+
         for (uint8 i = 0; i < params_.oracle.length; i++) {
             // Validate oracle and get price variables
             (uint256 price, uint256 oracleConversion_, uint256 scale_) = _validateOracle(
@@ -180,7 +173,7 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
                 uint256(ONE_HUNDRED_PERCENT)
             );
         }
-        
+
         term.oracle = params_.oracle;
         term.oracleConversion = oracleConversion;
         term.scale = scale;
@@ -200,15 +193,12 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
                 uint256(params_.duration)
             );
         }
-        
 
         // Check target interval discount in bounds
         if (params_.targetIntervalDiscount > ONE_HUNDRED_PERCENT) revert Auctioneer_InvalidParams();
 
         // Calculate decay speed
-        term.decaySpeed =
-            (params_.duration * params_.targetIntervalDiscount) /
-            params_.depositInterval;
+        term.decaySpeed = (params_.duration * params_.targetIntervalDiscount) / params_.depositInterval;
 
         // Store bond time terms
         term.vesting = params_.vesting;
@@ -222,12 +212,7 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
         }
 
         // Emit market created event
-        emit MarketCreated(
-            marketId,
-            payoutTokensAddresses,
-            address(params_.quoteToken),
-            params_.vesting
-        );
+        emit MarketCreated(marketId, payoutTokensAddresses, address(params_.quoteToken), params_.vesting);
 
         return marketId;
     }
@@ -238,14 +223,7 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
         ERC20 quoteToken_,
         ERC20 payoutToken_,
         uint48 baseDiscount_
-    )
-        internal
-        returns (
-            uint256,
-            uint256,
-            uint256
-        )
-    {
+    ) internal returns (uint256, uint256, uint256) {
         // Ensure token decimals are in bounds
         uint8 payoutTokenDecimals = payoutToken_.decimals();
         uint8 quoteTokenDecimals = quoteToken_.decimals();
@@ -255,8 +233,7 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
 
         // Check that oracle is valid. It should:
         // 1. Be a contract
-        if (address(oracle_) == address(0) || address(oracle_).code.length == 0)
-            revert Auctioneer_InvalidParams();
+        if (address(oracle_) == address(0) || address(oracle_).code.length == 0) revert Auctioneer_InvalidParams();
 
         // 2. Allow registering markets
         oracle_.registerMarket(id_, quoteToken_, payoutToken_);
@@ -282,32 +259,27 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
         // We apply the base discount to the oracle price before calculating
         // since this will be the initial equilibrium price of the market.
         int8 priceDecimals = _getPriceDecimals(
-            currentPrice.mulDivUp(
-                uint256(ONE_HUNDRED_PERCENT - baseDiscount_),
-                uint256(ONE_HUNDRED_PERCENT)
-            ),
+            currentPrice.mulDivUp(uint256(ONE_HUNDRED_PERCENT - baseDiscount_), uint256(ONE_HUNDRED_PERCENT)),
             oracleDecimals
         );
         // Check price decimals in reasonable range
         // These bounds are quite large and it is unlikely any combination of tokens
         // will have a price difference larger than 10^24 in either direction.
         // Check that oracle decimals are large enough to avoid precision loss from negative price decimals
-        if (int8(oracleDecimals) <= -priceDecimals || priceDecimals > 24)
-            revert Auctioneer_InvalidParams();
+        if (int8(oracleDecimals) <= -priceDecimals || priceDecimals > 24) revert Auctioneer_InvalidParams();
 
         // Calculate the oracle price conversion factor
         // oraclePriceFactor = int8(oracleDecimals) + priceDecimals;
         // bondPriceFactor = 36 - priceDecimals / 2 + priceDecimals;
         // oracleConversion = 10^(bondPriceFactor - oraclePriceFactor);
-        uint256 oracleConversion = 10**uint8(36 - priceDecimals / 2 - int8(oracleDecimals));
+        uint256 oracleConversion = 10 ** uint8(36 - priceDecimals / 2 - int8(oracleDecimals));
 
         // Unit to scale calculation for this market by to ensure reasonable values
         // for price, debt, and control variable without under/overflows.
         //
         // scaleAdjustment should be equal to (payoutDecimals - quoteDecimals) - ((payoutPriceDecimals - quotePriceDecimals) / 2)
         // scale = 10^(36 + scaleAdjustment);
-        uint256 scale = 10 **
-            uint8(36 + int8(payoutTokenDecimals) - int8(quoteTokenDecimals) - priceDecimals / 2);
+        uint256 scale = 10 ** uint8(36 + int8(payoutTokenDecimals) - int8(quoteTokenDecimals) - priceDecimals / 2);
 
         return (currentPrice * oracleConversion, oracleConversion, scale);
     }
@@ -339,8 +311,7 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
         // Restricted to authorized addresses
 
         // Require min deposit interval to be less than minimum market duration and at least 1 hour
-        if (depositInterval_ > minMarketDuration || depositInterval_ < 1 hours)
-            revert Auctioneer_InvalidParams();
+        if (depositInterval_ > minMarketDuration || depositInterval_ < 1 hours) revert Auctioneer_InvalidParams();
 
         minDepositInterval = depositInterval_;
     }
@@ -383,8 +354,7 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
         BondTerms memory term = terms[id_];
 
         // If market uses a callback, check that owner is still callback authorized
-        if (market.callbackAddr != address(0) && !callbackAuthorized[market.owner])
-            revert Auctioneer_NotAuthorized();
+        if (market.callbackAddr != address(0) && !callbackAuthorized[market.owner]) revert Auctioneer_NotAuthorized();
 
         // Check if market is live, if not revert
         if (!isLive(id_)) revert Auctioneer_MarketNotActive();
@@ -417,8 +387,7 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
             // (if capacity in quote is true)
 
             // If amount/payout is greater than capacity remaining, revert
-            if (payout[i] > market.capacity[i])
-                revert Auctioneer_NotEnoughCapacity();
+            if (payout[i] > market.capacity[i]) revert Auctioneer_NotEnoughCapacity();
             unchecked {
                 // Capacity is decreased by the deposited or paid amount
                 market.capacity[i] -= payout[i];
@@ -452,7 +421,7 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
     function _currentMarketPrice(uint256 id_) internal view returns (uint256[] memory) {
         BondMarket memory market = markets[id_];
         BondTerms memory term = terms[id_];
-        
+
         uint256[] memory price = new uint256[](market.payoutToken.length);
 
         // Compute seconds remaining until market will conclude
@@ -474,10 +443,7 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
 
             // Calculate expectedCapacity as the capacity expected to be bought or sold up to this point
             // Higher than current capacity means the market is undersold, lower than current capacity means the market is oversold
-            uint256 expectedCapacity = initialCapacity.mulDiv(
-                timeRemaining,
-                conclusion - uint256(term.start)
-            );
+            uint256 expectedCapacity = initialCapacity.mulDiv(timeRemaining, conclusion - uint256(term.start));
 
             // Price is increased or decreased based on how far the market is ahead or behind
             // Intuition:
@@ -503,8 +469,7 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
             } else {
                 // If actual capacity is greater than expected capacity, we need to check for underflows
                 // The adjustment has a minimum value of 0 since that will reduce the price to 0 as well.
-                uint256 factor = (term.decaySpeed * (market.capacity[i] - expectedCapacity)) /
-                    initialCapacity;
+                uint256 factor = (term.decaySpeed * (market.capacity[i] - expectedCapacity)) / initialCapacity;
                 adjustment = ONE_HUNDRED_PERCENT > factor ? ONE_HUNDRED_PERCENT - factor : 0;
             }
 
@@ -534,7 +499,9 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
     /* ========== EXTERNAL VIEW FUNCTIONS ========== */
 
     /// @inheritdoc IBondAuctioneer
-    function getMarketInfoForPurchase(uint256 id_)
+    function getMarketInfoForPurchase(
+        uint256 id_
+    )
         external
         view
         override
@@ -628,10 +595,7 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
         // this given it will be taken off the larger amount, but this avoids rounding
         // errors with trying to calculate the exact amount.
         // Therefore, the maxAmountAccepted is slightly conservative.
-        uint256 estimatedFee = amountAccepted.mulDiv(
-            _teller.getFee(referrer_),
-            ONE_HUNDRED_PERCENT
-        );
+        uint256 estimatedFee = amountAccepted.mulDiv(_teller.getFee(referrer_), ONE_HUNDRED_PERCENT);
 
         return amountAccepted + estimatedFee;
     }

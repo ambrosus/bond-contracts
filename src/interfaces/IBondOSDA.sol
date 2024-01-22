@@ -20,7 +20,7 @@ interface IBondOSDA is IBondAuctioneer {
 
     /// @notice Information pertaining to pricing and time parameters for a bond market
     struct BondTerms {
-        IBondOracle[]  oracle; // address to call for reference price. Must implement IBondOracle.
+        IBondOracle[] oracle; // address to call for reference price. Must implement IBondOracle.
         uint48 start; // timestamp when market starts
         uint48 conclusion; // timestamp when market no longer offered
         uint48 vesting; // length of time from deposit to expiry if fixed-term, vesting timestamp if fixed-expiry

@@ -119,30 +119,25 @@ abstract contract BondBaseFPA is IBondFPA, Auth {
         {
             // Check that the auctioneer is allowing new markets to be created
             if (!allowNewMarkets) revert Auctioneer_NewMarketsNotAllowed();
-            
+
             // Ensure params are in bounds
             for (uint8 i = 0; i < params_.payoutTokensNumber; i++) {
                 uint8 payoutTokenDecimals = params_.payoutToken[i].decimals();
                 int8 scaleAdjustment = params_.scaleAdjustment[i];
 
-                if (payoutTokenDecimals < 6 || payoutTokenDecimals > 18)
-                    revert Auctioneer_InvalidParams();
-                if (scaleAdjustment < -24 || scaleAdjustment > 24)
-                    revert Auctioneer_InvalidParams();
+                if (payoutTokenDecimals < 6 || payoutTokenDecimals > 18) revert Auctioneer_InvalidParams();
+                if (scaleAdjustment < -24 || scaleAdjustment > 24) revert Auctioneer_InvalidParams();
             }
-            
+
             uint8 quoteTokenDecimals = params_.quoteToken.decimals();
-            if (quoteTokenDecimals < 6 || quoteTokenDecimals > 18)
-                revert Auctioneer_InvalidParams();
-            
+            if (quoteTokenDecimals < 6 || quoteTokenDecimals > 18) revert Auctioneer_InvalidParams();
 
             // Restrict the use of a callback address unless allowed
             if (!callbackAuthorized[msg.sender] && params_.callbackAddr != address(0))
                 revert Auctioneer_NotAuthorized();
 
             // Start time must be zero or in the future
-            if (params_.start > 0 && params_.start < block.timestamp)
-                revert Auctioneer_InvalidParams();
+            if (params_.start > 0 && params_.start < block.timestamp) revert Auctioneer_InvalidParams();
         }
 
         // Unit to scale calculation for this market by to ensure reasonable values.
@@ -152,10 +147,10 @@ abstract contract BondBaseFPA is IBondFPA, Auth {
         uint256[] memory scale = new uint256[](params_.payoutTokensNumber);
         for (uint8 i = 0; i < params_.payoutTokensNumber; i++) {
             unchecked {
-                scale[i] = 10**uint8(36 + params_.scaleAdjustment[i]);
+                scale[i] = 10 ** uint8(36 + params_.scaleAdjustment[i]);
             }
         }
-        
+
         // Check that price is not zero
         for (uint8 i = 0; i < params_.payoutTokensNumber; i++) {
             if (params_.formattedPrice[i] == 0) revert Auctioneer_InvalidParams();
@@ -201,11 +196,7 @@ abstract contract BondBaseFPA is IBondFPA, Auth {
         // Calculate and store time terms
         uint48 start = params_.start == 0 ? uint48(block.timestamp) : params_.start;
 
-        terms[marketId] = BondTerms({
-            start: start,
-            conclusion: start + params_.duration,
-            vesting: params_.vesting
-        });
+        terms[marketId] = BondTerms({start: start, conclusion: start + params_.duration, vesting: params_.vesting});
 
         address[] memory payoutTokensAddresses = new address[](params_.payoutToken.length);
         for (uint8 i = 0; i < params_.payoutTokensNumber; i++) {
@@ -250,8 +241,7 @@ abstract contract BondBaseFPA is IBondFPA, Auth {
         // Restricted to authorized addresses
 
         // Require min deposit interval to be less than minimum market duration and at least 1 hour
-        if (depositInterval_ > minMarketDuration || depositInterval_ < 1 hours)
-            revert Auctioneer_InvalidParams();
+        if (depositInterval_ > minMarketDuration || depositInterval_ < 1 hours) revert Auctioneer_InvalidParams();
 
         minDepositInterval = depositInterval_;
     }
@@ -297,8 +287,7 @@ abstract contract BondBaseFPA is IBondFPA, Auth {
         uint256[] memory payout = new uint256[](market.payoutToken.length);
 
         // If market uses a callback, check that owner is still callback authorized
-        if (market.callbackAddr != address(0) && !callbackAuthorized[market.owner])
-            revert Auctioneer_NotAuthorized();
+        if (market.callbackAddr != address(0) && !callbackAuthorized[market.owner]) revert Auctioneer_NotAuthorized();
 
         // Check if market is live, if not revert
         if (!isLive(id_)) revert Auctioneer_MarketNotActive();
@@ -314,8 +303,7 @@ abstract contract BondBaseFPA is IBondFPA, Auth {
             if (payout[i] > market.maxPayout[i]) revert Auctioneer_MaxPayoutExceeded();
 
             // If amount/payout is greater than capacity remaining, revert
-            if (payout[i] > market.capacity[i])
-                revert Auctioneer_NotEnoughCapacity();
+            if (payout[i] > market.capacity[i]) revert Auctioneer_NotEnoughCapacity();
             // Capacity is decreased by the deposited or paid amount
             market.capacity[i] -= payout[i];
 
@@ -334,18 +322,9 @@ abstract contract BondBaseFPA is IBondFPA, Auth {
     /* ========== EXTERNAL VIEW FUNCTIONS ========== */
 
     /// @inheritdoc IBondAuctioneer
-    function getMarketInfoForPurchase(uint256 id_)
-        external
-        view
-        returns (
-            address,
-            address,
-            ERC20[] memory,
-            ERC20,
-            uint48,
-            uint256[] memory
-        )
-    {
+    function getMarketInfoForPurchase(
+        uint256 id_
+    ) external view returns (address, address, ERC20[] memory, ERC20, uint48, uint256[] memory) {
         BondMarket memory market = markets[id_];
         return (
             market.owner,
@@ -416,15 +395,9 @@ abstract contract BondBaseFPA is IBondFPA, Auth {
         uint256 maxQuote = 0;
 
         for (uint8 i = 0; i < prices.length; i++) {
-            quoteCapacity += market.capacity[i].mulDiv(
-                prices[i],
-                market.scale[i]
-            );
+            quoteCapacity += market.capacity[i].mulDiv(prices[i], market.scale[i]);
 
-            maxQuote += market.maxPayout[i].mulDiv(
-                prices[i],
-                market.scale[i]
-            );
+            maxQuote += market.maxPayout[i].mulDiv(prices[i], market.scale[i]);
         }
 
         uint256 amountAccepted = quoteCapacity < maxQuote ? quoteCapacity : maxQuote;
@@ -434,10 +407,7 @@ abstract contract BondBaseFPA is IBondFPA, Auth {
         // this given it will be taken off the larger amount, but this avoids rounding
         // errors with trying to calculate the exact amount.
         // Therefore, the maxAmountAccepted is slightly conservative.
-        uint256 estimatedFee = amountAccepted.mulDiv(
-            _teller.getFee(referrer_),
-            ONE_HUNDRED_PERCENT
-        );
+        uint256 estimatedFee = amountAccepted.mulDiv(_teller.getFee(referrer_), ONE_HUNDRED_PERCENT);
 
         return amountAccepted + estimatedFee;
     }
@@ -449,9 +419,7 @@ abstract contract BondBaseFPA is IBondFPA, Auth {
 
         uint256[] memory maxPayouts = new uint256[](prices.length);
         for (uint8 i = 0; i < prices.length; i++) {
-            maxPayouts[i] = market.maxPayout[i] > market.capacity[i]
-                ? market.capacity[i]
-                : market.maxPayout[i];
+            maxPayouts[i] = market.maxPayout[i] > market.capacity[i] ? market.capacity[i] : market.maxPayout[i];
         }
 
         return maxPayouts;

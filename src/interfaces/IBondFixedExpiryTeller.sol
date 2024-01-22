@@ -16,11 +16,7 @@ interface IBondFixedExpiryTeller {
     /// @param amount_       Amount of underlying tokens to deposit
     /// @return              Address of the ERC20 bond token received
     /// @return              Amount of the ERC20 bond token received
-    function create(
-        ERC20 underlying_,
-        uint48 expiry_,
-        uint256 amount_
-    ) external returns (ERC20BondToken, uint256);
+    function create(ERC20 underlying_, uint48 expiry_, uint256 amount_) external returns (ERC20BondToken, uint256);
 
     /// @notice             Deploy a new ERC20 bond token for an (underlying, expiry) pair and return its address
     /// @dev                ERC20 used for fixed-expiry

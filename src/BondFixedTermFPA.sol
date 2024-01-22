@@ -52,7 +52,10 @@ contract BondFixedTermFPA is BondBaseFPA {
             uint48 duration,
             int8[] memory scaleAdjustment,
             uint8 payoutTokensNumber
-        ) = abi.decode(params_, (ERC20[], ERC20, address, uint256[], uint256[], uint48, uint48, uint48, uint48, int8[], uint8));
+        ) = abi.decode(
+                params_,
+                (ERC20[], ERC20, address, uint256[], uint256[], uint48, uint48, uint48, uint48, int8[], uint8)
+            );
 
         MarketParams memory params = MarketParams({
             payoutToken: payoutToken,

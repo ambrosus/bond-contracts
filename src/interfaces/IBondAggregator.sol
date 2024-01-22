@@ -17,9 +17,7 @@ interface IBondAggregator {
     /// @param payoutToken_ Token to be paid out by the market
     /// @param quoteToken_  Token to be accepted by the market
     /// @param marketId     ID of the market being created
-    function registerMarket(ERC20[] memory payoutToken_, ERC20 quoteToken_)
-        external
-        returns (uint256 marketId);
+    function registerMarket(ERC20[] memory payoutToken_, ERC20 quoteToken_) external returns (uint256 marketId);
 
     /// @notice     Get the auctioneer for the provided market ID
     /// @param id_  ID of Market
@@ -46,11 +44,7 @@ interface IBondAggregator {
     /// @param referrer_    Address of referrer, used to get fees to calculate accurate payout amount.
     ///                     Inputting the zero address will take into account just the protocol fee.
     /// @return             amount of payout tokens to be paid
-    function payoutFor(
-        uint256 amount_,
-        uint256 id_,
-        address referrer_
-    ) external view returns (uint256[] memory);
+    function payoutFor(uint256 amount_, uint256 id_, address referrer_) external view returns (uint256[] memory);
 
     /// @notice             Returns maximum amount of quote token accepted by the market
     /// @param id_          ID of market
@@ -68,18 +62,12 @@ interface IBondAggregator {
 
     /// @notice             Returns array of active market IDs within a range
     /// @dev                Should be used if length exceeds max to query entire array
-    function liveMarketsBetween(uint256 firstIndex_, uint256 lastIndex_)
-        external
-        view
-        returns (uint256[] memory);
+    function liveMarketsBetween(uint256 firstIndex_, uint256 lastIndex_) external view returns (uint256[] memory);
 
     /// @notice             Returns an array of all active market IDs for a given quote token
     /// @param token_       Address of token to query by
     /// @param isPayout_    If true, search by payout token, else search for quote token
-    function liveMarketsFor(address token_, bool isPayout_)
-        external
-        view
-        returns (uint256[] memory);
+    function liveMarketsFor(address token_, bool isPayout_) external view returns (uint256[] memory);
 
     /// @notice             Returns an array of all active market IDs for a given owner
     /// @param owner_       Address of owner to query by

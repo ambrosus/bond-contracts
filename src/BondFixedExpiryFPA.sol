@@ -4,6 +4,7 @@ pragma solidity 0.8.15;
 import {BondBaseFPA, IBondAggregator, Authority} from "./bases/BondBaseFPA.sol";
 import {IBondTeller} from "./interfaces/IBondTeller.sol";
 import {IBondFixedExpiryTeller} from "./interfaces/IBondFixedExpiryTeller.sol";
+import {ERC20} from "solmate/src/tokens/ERC20.sol";
 
 /// @title Bond Fixed-Expiry Fixed Price Auctioneer
 /// @notice Bond Fixed-Expiry Fixed Price Auctioneer Contract
@@ -39,7 +40,36 @@ contract BondFixedExpiryFPA is BondBaseFPA {
     /// @inheritdoc BondBaseFPA
     function createMarket(bytes calldata params_) external override returns (uint256) {
         // Decode params into the struct type expected by this auctioneer
-        MarketParams memory params = abi.decode(params_, (MarketParams));
+        (
+            ERC20[] memory payoutToken,
+            ERC20 quoteToken,
+            address callbackAddr,
+            uint256[] memory capacity,
+            uint256[] memory formattedPrice,
+            uint48 depositInterval,
+            uint48 vesting,
+            uint48 start,
+            uint48 duration,
+            int8[] memory scaleAdjustment,
+            uint8 payoutTokensNumber
+        ) = abi.decode(
+                params_,
+                (ERC20[], ERC20, address, uint256[], uint256[], uint48, uint48, uint48, uint48, int8[], uint8)
+            );
+
+        MarketParams memory params = MarketParams({
+            payoutToken: payoutToken,
+            quoteToken: quoteToken,
+            callbackAddr: callbackAddr,
+            capacity: capacity,
+            formattedPrice: formattedPrice,
+            depositInterval: depositInterval,
+            vesting: vesting,
+            start: start,
+            duration: duration,
+            scaleAdjustment: scaleAdjustment,
+            payoutTokensNumber: payoutTokensNumber
+        });
 
         // Vesting is rounded to the nearest day at 0000 UTC (in seconds) since bond tokens
         // are only unique to a day, not a specific timestamp.
@@ -47,19 +77,17 @@ contract BondFixedExpiryFPA is BondBaseFPA {
 
         // Get conclusion from start time and duration
         // Don't need to check valid start time or duration here since it will be checked in _createMarket
-        uint48 start = params.start == 0 ? uint48(block.timestamp) : params.start;
-        uint48 conclusion = start + params.duration;
+        uint48 start_ = params.start == 0 ? uint48(block.timestamp) : params.start;
+        uint48 conclusion_ = start_ + params.duration;
 
         // Check that the vesting parameter is valid for a fixed-expiry market
-        if (params.vesting != 0 && params.vesting < conclusion) revert Auctioneer_InvalidParams();
+        if (params.vesting != 0 && params.vesting < conclusion_) revert Auctioneer_InvalidParams();
 
         // Create market with provided params
         uint256 marketId = _createMarket(params);
 
-        // TODO: FIXME
         // Create bond token (ERC20 for fixed expiry) if not instant swap
-        // if (params.vesting != 0)
-        //     IBondFixedExpiryTeller(address(_teller)).deploy(params.payoutToken, params.vesting);
+        if (params.vesting != 0) IBondFixedExpiryTeller(address(_teller)).deploy(params.payoutToken, params.vesting);
 
         // Return market ID
         return marketId;

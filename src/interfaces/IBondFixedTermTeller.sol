@@ -19,11 +19,7 @@ interface IBondFixedTermTeller {
     /// @param amount_       Amount of underlying tokens to deposit
     /// @return              ID of the ERC1155 bond token received
     /// @return              Amount of the ERC1155 bond token received
-    function create(
-        ERC20 underlying_,
-        uint48 expiry_,
-        uint256 amount_
-    ) external returns (uint256, uint256);
+    function create(ERC20 underlying_, uint48 expiry_, uint256 amount_) external returns (uint256, uint256);
 
     /// @notice             "Deploy" a new ERC1155 bond token for an (underlying, expiry) pair and return its token ID
     /// @dev                ERC1155 used for fixed-term
@@ -53,8 +49,5 @@ interface IBondFixedTermTeller {
     /// @param tokenId_     ID of the bond token
     /// @return name        Bond token name
     /// @return symbol      Bond token symbol
-    function getTokenNameAndSymbol(uint256 tokenId_)
-        external
-        view
-        returns (string memory, string memory);
+    function getTokenNameAndSymbol(uint256 tokenId_) external view returns (string memory, string memory);
 }

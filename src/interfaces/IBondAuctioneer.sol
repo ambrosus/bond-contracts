@@ -88,7 +88,9 @@ interface IBondAuctioneer {
     /// @return quoteToken      Quote Token (token received) for the Market
     /// @return vesting         Timestamp or duration for vesting, implementation-dependent
     /// @return maxPayout       Maximum amount of payout tokens you can purchase in one transaction
-    function getMarketInfoForPurchase(uint256 id_)
+    function getMarketInfoForPurchase(
+        uint256 id_
+    )
         external
         view
         returns (
@@ -119,11 +121,7 @@ interface IBondAuctioneer {
     /// @param referrer_    Address of referrer, used to get fees to calculate accurate payout amount.
     ///                     Inputting the zero address will take into account just the protocol fee.
     /// @return             amount of payout tokens to be paid
-    function payoutFor(
-        uint256 amount_,
-        uint256 id_,
-        address referrer_
-    ) external view returns (uint256[] memory);
+    function payoutFor(uint256 amount_, uint256 id_, address referrer_) external view returns (uint256[] memory);
 
     /// @notice             Returns maximum amount of quote token accepted by the market
     /// @param id_          ID of market

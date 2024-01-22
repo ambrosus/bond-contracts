@@ -3,6 +3,7 @@ pragma solidity 0.8.15;
 
 import {BondBaseSDA, IBondAggregator, Authority} from "./bases/BondBaseSDA.sol";
 import {IBondTeller} from "./interfaces/IBondTeller.sol";
+import {ERC20} from "solmate/src/tokens/ERC20.sol";
 
 /// @title Bond Fixed-Term Sequential Dutch Auctioneer
 /// @notice Bond Fixed-Term Sequential Dutch Auctioneer Contract
@@ -32,7 +33,51 @@ contract BondFixedTermSDA is BondBaseSDA {
     /// @inheritdoc BondBaseSDA
     function createMarket(bytes calldata params_) external override returns (uint256) {
         // Decode params into the struct type expected by this auctioneer
-        MarketParams memory params = abi.decode(params_, (MarketParams));
+        (
+            ERC20[] memory payoutToken,
+            ERC20 quoteToken,
+            address callbackAddr,
+            uint256[] memory capacity,
+            uint256[] memory formattedInitialPrice,
+            uint256[] memory formattedMinimumPrice,
+            uint32 debtBuffer,
+            uint48 vesting,
+            uint48 start,
+            uint32 duration,
+            uint32 depositInterval,
+            int8[] memory scaleAdjustment
+        ) = abi.decode(
+                params_,
+                (
+                    ERC20[],
+                    ERC20,
+                    address,
+                    uint256[],
+                    uint256[],
+                    uint256[],
+                    uint32,
+                    uint48,
+                    uint48,
+                    uint32,
+                    uint32,
+                    int8[]
+                )
+            );
+
+        MarketParams memory params = MarketParams({
+            payoutToken: payoutToken,
+            quoteToken: quoteToken,
+            callbackAddr: callbackAddr,
+            capacity: capacity,
+            formattedInitialPrice: formattedInitialPrice,
+            formattedMinimumPrice: formattedMinimumPrice,
+            debtBuffer: debtBuffer,
+            depositInterval: depositInterval,
+            vesting: vesting,
+            start: start,
+            duration: duration,
+            scaleAdjustment: scaleAdjustment
+        });
 
         // Check that the vesting parameter is valid for a fixed-term market
         if (params.vesting != 0 && (params.vesting < 1 days || params.vesting > MAX_FIXED_TERM))

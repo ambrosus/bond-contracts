@@ -63,8 +63,7 @@ contract BondAggregator is IBondAggregator, Auth {
         // Restricted to authorized addresses
 
         // Check that the auctioneer is not already registered
-        if (_whitelist[address(auctioneer_)])
-            revert Aggregator_AlreadyRegistered(address(auctioneer_));
+        if (_whitelist[address(auctioneer_)]) revert Aggregator_AlreadyRegistered(address(auctioneer_));
 
         // Add the auctioneer to the whitelist
         auctioneers.push(auctioneer_);
@@ -72,19 +71,17 @@ contract BondAggregator is IBondAggregator, Auth {
     }
 
     /// @inheritdoc IBondAggregator
-    function registerMarket(ERC20[] memory payoutToken_, ERC20 quoteToken_)
-        external
-        override
-        returns (uint256 marketId)
-    {
+    function registerMarket(
+        ERC20[] memory payoutToken_,
+        ERC20 quoteToken_
+    ) external override returns (uint256 marketId) {
         if (!_whitelist[msg.sender]) revert Aggregator_OnlyAuctioneer();
-        if (address(quoteToken_) == address(0))
-            revert Aggregator_InvalidParams();
+        if (address(quoteToken_) == address(0)) revert Aggregator_InvalidParams();
         for (uint256 i; i < payoutToken_.length; ++i) {
             if (address(payoutToken_[i]) == address(0)) revert Aggregator_InvalidParams();
             marketsForPayout[address(payoutToken_[i])].push(marketId);
         }
-    
+
         marketId = marketCounter;
         marketsToAuctioneers[marketId] = IBondAuctioneer(msg.sender);
         marketsForQuote[address(quoteToken_)].push(marketId);
@@ -139,12 +136,10 @@ contract BondAggregator is IBondAggregator, Auth {
     }
 
     /// @inheritdoc IBondAggregator
-    function liveMarketsBetween(uint256 firstIndex_, uint256 lastIndex_)
-        external
-        view
-        override
-        returns (uint256[] memory)
-    {
+    function liveMarketsBetween(
+        uint256 firstIndex_,
+        uint256 lastIndex_
+    ) external view override returns (uint256[] memory) {
         uint256 count;
         for (uint256 i = firstIndex_; i < lastIndex_; ++i) {
             if (isLive(i)) ++count;
@@ -162,12 +157,7 @@ contract BondAggregator is IBondAggregator, Auth {
     }
 
     /// @inheritdoc IBondAggregator
-    function liveMarketsFor(address token_, bool isPayout_)
-        public
-        view
-        override
-        returns (uint256[] memory)
-    {
+    function liveMarketsFor(address token_, bool isPayout_) public view override returns (uint256[] memory) {
         uint256[] memory mkts;
 
         mkts = isPayout_ ? marketsForPayout[token_] : marketsForQuote[token_];
