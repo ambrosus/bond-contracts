@@ -3,6 +3,7 @@ pragma solidity 0.8.15;
 
 import {BondBaseSDA, IBondAggregator, Authority} from "./bases/BondBaseSDA.sol";
 import {IBondTeller} from "./interfaces/IBondTeller.sol";
+import {IWrapper} from "./interfaces/IWrapper.sol";
 
 /// @title Bond Fixed-Term Sequential Dutch Auctioneer
 /// @notice Bond Fixed-Term Sequential Dutch Auctioneer Contract
@@ -16,7 +17,7 @@ import {IBondTeller} from "./interfaces/IBondTeller.sol";
 ///
 /// @dev The Fixed-Term Auctioneer is an implementation of the
 ///      Bond Base Auctioneer contract specific to creating bond markets where
-///      purchases vest in a fixed amount of time after purchased (rounded to the day).
+///      purchases vest in a fixed amount of time after purchased (rounded to the minute).
 ///
 /// @author Oighty, Zeus, Potted Meat, indigo
 contract BondFixedTermSDA is BondBaseSDA {
@@ -25,12 +26,13 @@ contract BondFixedTermSDA is BondBaseSDA {
         IBondTeller teller_,
         IBondAggregator aggregator_,
         address guardian_,
-        Authority authority_
-    ) BondBaseSDA(teller_, aggregator_, guardian_, authority_) {}
+        Authority authority_,
+        IWrapper wrapper_
+    ) BondBaseSDA(teller_, aggregator_, guardian_, authority_, wrapper_) {}
 
     /* ========== MARKET FUNCTIONS ========== */
     /// @inheritdoc BondBaseSDA
-    function createMarket(bytes calldata params_) external override returns (uint256) {
+    function createMarket(bytes calldata params_) external payable override returns (uint256) {
         // Decode params into the struct type expected by this auctioneer
         MarketParams memory params = abi.decode(params_, (MarketParams));
 

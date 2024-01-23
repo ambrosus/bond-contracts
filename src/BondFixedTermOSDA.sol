@@ -3,6 +3,7 @@ pragma solidity ^0.8.15;
 
 import {BondBaseOSDA, IBondAggregator, Authority} from "./bases/BondBaseOSDA.sol";
 import {IBondTeller} from "./interfaces/IBondTeller.sol";
+import {IWrapper} from "./interfaces/IWrapper.sol";
 
 /// @title Bond Fixed-Term Oracle-based Sequential Dutch Auctioneer
 /// @notice Bond Fixed-Term Oracle-based Sequential Dutch Auctioneer Contract
@@ -16,7 +17,7 @@ import {IBondTeller} from "./interfaces/IBondTeller.sol";
 ///
 /// @dev The Fixed-Term Oracle-based SDA is an implementation of the
 ///      Bond Base OSDA contract specific to creating bond markets where
-///      purchases vest in a fixed amount of time after purchased (rounded to the day).
+///      purchases vest in a fixed amount of time after purchased (rounded to the minute).
 ///
 /// @author Oighty, Zeus, Potted Meat, indigo
 contract BondFixedTermOSDA is BondBaseOSDA {
@@ -25,12 +26,13 @@ contract BondFixedTermOSDA is BondBaseOSDA {
         IBondTeller teller_,
         IBondAggregator aggregator_,
         address guardian_,
-        Authority authority_
-    ) BondBaseOSDA(teller_, aggregator_, guardian_, authority_) {}
+        Authority authority_,
+        IWrapper wrapper_
+    ) BondBaseOSDA(teller_, aggregator_, guardian_, authority_, wrapper_) {}
 
     /* ========== MARKET FUNCTIONS ========== */
     /// @inheritdoc BondBaseOSDA
-    function createMarket(bytes calldata params_) external override returns (uint256) {
+    function createMarket(bytes calldata params_) external payable override returns (uint256) {
         // Decode params into the struct type expected by this auctioneer
         MarketParams memory params = abi.decode(params_, (MarketParams));
 

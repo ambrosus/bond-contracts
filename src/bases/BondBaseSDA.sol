@@ -9,6 +9,7 @@ import {IBondSDA, IBondAuctioneer} from "../interfaces/IBondSDA.sol";
 import {IBondTeller} from "../interfaces/IBondTeller.sol";
 import {IBondCallback} from "../interfaces/IBondCallback.sol";
 import {IBondAggregator} from "../interfaces/IBondAggregator.sol";
+import {IWrapper} from "../interfaces/IWrapper.sol";
 
 import {TransferHelper} from "../lib/TransferHelper.sol";
 import {FullMath} from "../lib/FullMath.sol";
@@ -112,14 +113,19 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
     // BondTeller contract that handles interactions with users and issues tokens
     IBondTeller internal immutable _teller;
 
+    // Wrapper contract that handles deposits and withdrawals in native tokens
+    IWrapper internal immutable _wrapper;
+
     constructor(
         IBondTeller teller_,
         IBondAggregator aggregator_,
         address guardian_,
-        Authority authority_
+        Authority authority_,
+        IWrapper wrapper_
     ) Auth(guardian_, authority_) {
         _aggregator = aggregator_;
         _teller = teller_;
+        _wrapper = wrapper_;
 
         defaultTuneInterval = 24 hours;
         defaultTuneAdjustment = 6 hours;
@@ -134,10 +140,16 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
     /* ========== MARKET FUNCTIONS ========== */
 
     /// @inheritdoc IBondAuctioneer
-    function createMarket(bytes calldata params_) external virtual returns (uint256);
+    function createMarket(bytes calldata params_) external payable virtual returns (uint256);
 
     /// @notice core market creation logic, see IBondSDA.MarketParams documentation
     function _createMarket(MarketParams memory params_) internal returns (uint256) {
+        bool isPayoutTokenNative = false;
+        if (params_.payoutToken == ERC20(address(0))) {
+            isPayoutTokenNative = true;
+            params_.payoutToken = ERC20(address(_wrapper));
+        }
+
         {
             // Check that the auctioneer is allowing new markets to be created
             if (!allowNewMarkets) revert Auctioneer_NewMarketsNotAllowed();
@@ -146,20 +158,16 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
             uint8 payoutTokenDecimals = params_.payoutToken.decimals();
             uint8 quoteTokenDecimals = params_.quoteToken.decimals();
 
-            if (payoutTokenDecimals < 6 || payoutTokenDecimals > 18)
-                revert Auctioneer_InvalidParams();
-            if (quoteTokenDecimals < 6 || quoteTokenDecimals > 18)
-                revert Auctioneer_InvalidParams();
-            if (params_.scaleAdjustment < -24 || params_.scaleAdjustment > 24)
-                revert Auctioneer_InvalidParams();
+            if (payoutTokenDecimals < 6 || payoutTokenDecimals > 18) revert Auctioneer_InvalidParams();
+            if (quoteTokenDecimals < 6 || quoteTokenDecimals > 18) revert Auctioneer_InvalidParams();
+            if (params_.scaleAdjustment < -24 || params_.scaleAdjustment > 24) revert Auctioneer_InvalidParams();
 
             // Restrict the use of a callback address unless allowed
             if (!callbackAuthorized[msg.sender] && params_.callbackAddr != address(0))
                 revert Auctioneer_NotAuthorized();
 
             // Start time must be zero or in the future
-            if (params_.start > 0 && params_.start < block.timestamp)
-                revert Auctioneer_InvalidParams();
+            if (params_.start > 0 && params_.start < block.timestamp) revert Auctioneer_InvalidParams();
         }
 
         // Unit to scale calculation for this market by to ensure reasonable values
@@ -169,40 +177,49 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
         // scaleAdjustment should be equal to (payoutDecimals - quoteDecimals) - ((payoutPriceDecimals - quotePriceDecimals) / 2)
         uint256 scale;
         unchecked {
-            scale = 10**uint8(36 + params_.scaleAdjustment);
+            scale = 10 ** uint8(36 + params_.scaleAdjustment);
         }
 
-        if (params_.formattedInitialPrice < params_.formattedMinimumPrice)
-            revert Auctioneer_InitialPriceLessThanMin();
+        if (params_.formattedInitialPrice < params_.formattedMinimumPrice) revert Auctioneer_InitialPriceLessThanMin();
 
         // Register new market on aggregator and get marketId
         uint256 marketId = _aggregator.registerMarket(params_.payoutToken, params_.quoteToken);
 
+        // Check time bounds
+        if (
+            params_.duration < minMarketDuration ||
+            params_.depositInterval < minDepositInterval ||
+            params_.depositInterval > params_.duration
+        ) revert Auctioneer_InvalidParams();
+
+        // Convert capacity to payout token units
+        uint256 capacityInPayout = params_.capacityInQuote
+            ? params_.capacity.mulDiv(scale, params_.formattedInitialPrice)
+            : params_.capacity;
+
+        // Wrap native tokens
+        if (isPayoutTokenNative) {
+            // Ensure capacity is equal to the value sent
+            if (capacityInPayout != msg.value) revert Auctioneer_InvalidParams();
+
+            // Wrap native tokens
+            _wrapper.deposit{value: msg.value}();
+            // Transfer tokens back to user
+            params_.payoutToken.safeTransfer(msg.sender, msg.value);
+        }
+
         uint32 debtDecayInterval;
         {
-            // Check time bounds
-            if (
-                params_.duration < minMarketDuration ||
-                params_.depositInterval < minDepositInterval ||
-                params_.depositInterval > params_.duration
-            ) revert Auctioneer_InvalidParams();
-
             // The debt decay interval is how long it takes for price to drop to 0 from the last decay timestamp.
             // In reality, a 50% drop is likely a guaranteed bond sale. Therefore, debt decay interval needs to be
             // long enough to allow a bond to adjust if oversold. It also needs to be some multiple of deposit interval
             // because you don't want to go from 100 to 0 during the time frame you expected to sell a single bond.
             // A multiple of 5 is a sane default observed from running OP v1 bond markets.
             uint32 userDebtDecay = params_.depositInterval * 5;
-            debtDecayInterval = minDebtDecayInterval > userDebtDecay
-                ? minDebtDecayInterval
-                : userDebtDecay;
+            debtDecayInterval = minDebtDecayInterval > userDebtDecay ? minDebtDecayInterval : userDebtDecay;
 
             uint256 tuneIntervalCapacity = params_.capacity.mulDiv(
-                uint256(
-                    params_.depositInterval > defaultTuneInterval
-                        ? params_.depositInterval
-                        : defaultTuneInterval
-                ),
+                uint256(params_.depositInterval > defaultTuneInterval ? params_.depositInterval : defaultTuneInterval),
                 uint256(params_.duration)
             );
 
@@ -218,11 +235,7 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
                 debtDecayInterval: debtDecayInterval,
                 tuneIntervalCapacity: tuneIntervalCapacity,
                 tuneBelowCapacity: params_.capacity - tuneIntervalCapacity,
-                lastTuneDebt: (
-                    params_.capacityInQuote
-                        ? params_.capacity.mulDiv(scale, params_.formattedInitialPrice)
-                        : params_.capacity
-                ).mulDiv(uint256(debtDecayInterval), uint256(params_.duration))
+                lastTuneDebt: capacityInPayout.mulDiv(uint256(debtDecayInterval), uint256(params_.duration))
             });
         }
 
@@ -235,21 +248,14 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
         uint256 targetDebt;
         uint256 _maxPayout;
         {
-            uint256 capacity = params_.capacityInQuote
-                ? params_.capacity.mulDiv(scale, params_.formattedInitialPrice)
-                : params_.capacity;
-
-            targetDebt = capacity.mulDiv(uint256(debtDecayInterval), uint256(params_.duration));
+            targetDebt = capacityInPayout.mulDiv(uint256(debtDecayInterval), uint256(params_.duration));
 
             // Max payout is the amount of capacity that should be utilized in a deposit
             // interval. for example, if capacity is 1,000 TOKEN, there are 10 days to conclusion,
             // and the preferred deposit interval is 1 day, max payout would be 100 TOKEN.
             // Additionally, max payout is the maximum amount that a user can receive from a single
             // purchase at that moment in time.
-            _maxPayout = capacity.mulDiv(
-                uint256(params_.depositInterval),
-                uint256(params_.duration)
-            );
+            _maxPayout = capacityInPayout.mulDiv(uint256(params_.depositInterval), uint256(params_.duration));
         }
 
         markets[marketId] = BondMarket({
@@ -274,14 +280,18 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
         // Note that the buffer is above 100%. i.e. 10% buffer = initial debt * 1.1
         // 1e5 = 100,000. 10,000 / 100,000 = 10%.
         // See IBondSDA.MarketParams for more information on determining a reasonable debt buffer.
-        uint256 minDebtBuffer_ = _maxPayout.mulDiv(FEE_DECIMALS, targetDebt) > minDebtBuffer
-            ? _maxPayout.mulDiv(FEE_DECIMALS, targetDebt)
-            : minDebtBuffer;
-        uint256 maxDebt = targetDebt +
-            targetDebt.mulDiv(
-                uint256(params_.debtBuffer > minDebtBuffer_ ? params_.debtBuffer : minDebtBuffer_),
-                1e5
-            );
+        uint256 maxDebt;
+        {
+            uint256 minDebtBuffer_ = _maxPayout.mulDiv(FEE_DECIMALS, targetDebt) > minDebtBuffer
+                ? _maxPayout.mulDiv(FEE_DECIMALS, targetDebt)
+                : minDebtBuffer;
+            maxDebt =
+                targetDebt +
+                targetDebt.mulDiv(
+                    uint256(params_.debtBuffer > minDebtBuffer_ ? params_.debtBuffer : minDebtBuffer_),
+                    1e5
+                );
+        }
 
         // The control variable is set as the ratio of price to the initial targetDebt, scaled to prevent under/overflows.
         // It determines the price of the market as the debt decays and is tuned by the market based on user activity.
@@ -290,12 +300,11 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
         // price = control variable * debt / scale
         // therefore, control variable = price * scale / debt
         uint256 controlVariable = params_.formattedInitialPrice.mulDiv(scale, targetDebt);
-        uint48 start = params_.start == 0 ? uint48(block.timestamp) : params_.start;
         terms[marketId] = BondTerms({
             controlVariable: controlVariable,
             maxDebt: maxDebt,
-            start: start,
-            conclusion: start + uint48(params_.duration),
+            start: params_.start == 0 ? uint48(block.timestamp) : params_.start,
+            conclusion: params_.start == 0 ? uint48(block.timestamp) : params_.start + uint48(params_.duration),
             vesting: params_.vesting
         });
 
@@ -316,8 +325,7 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
         if (!isLive(id_)) revert Auctioneer_InvalidParams();
 
         // Check that the intervals are non-zero
-        if (intervals_[0] == 0 || intervals_[1] == 0 || intervals_[2] == 0)
-            revert Auctioneer_InvalidParams();
+        if (intervals_[0] == 0 || intervals_[1] == 0 || intervals_[2] == 0) revert Auctioneer_InvalidParams();
 
         // Check that tuneInterval >= tuneAdjustmentDelay
         if (intervals_[0] < intervals_[1]) revert Auctioneer_InvalidParams();
@@ -425,8 +433,7 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
         BondTerms memory term = terms[id_];
 
         // If market uses a callback, check that owner is still callback authorized
-        if (market.callbackAddr != address(0) && !callbackAuthorized[market.owner])
-            revert Auctioneer_NotAuthorized();
+        if (market.callbackAddr != address(0) && !callbackAuthorized[market.owner]) revert Auctioneer_NotAuthorized();
 
         // Check if market is live, if not revert
         if (!isLive(id_)) revert Auctioneer_MarketNotActive();
@@ -558,27 +565,16 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
         //    to the number of seconds used to calculate the previous currentDebt.
         // 2. Add the payout to the total debt to increase the price.
         uint256 decayOffset = time_ > lastDecay
-            ? (
-                debtDecayInterval > (time_ - lastDecay)
-                    ? debtDecayInterval - (time_ - lastDecay)
-                    : 0
-            )
+            ? (debtDecayInterval > (time_ - lastDecay) ? debtDecayInterval - (time_ - lastDecay) : 0)
             : debtDecayInterval + (lastDecay - time_);
-        markets[id_].totalDebt =
-            decayedDebt.mulDiv(debtDecayInterval, decayOffset + lastDecayIncrement) +
-            payout_ +
-            1; // add 1 to satisfy price inequality
+        markets[id_].totalDebt = decayedDebt.mulDiv(debtDecayInterval, decayOffset + lastDecayIncrement) + payout_ + 1; // add 1 to satisfy price inequality
     }
 
     /// @notice             Auto-adjust control variable to hit capacity/spend target
     /// @param id_          ID of market
     /// @param time_        Timestamp (saves gas when passed in)
     /// @param price_       Current price of the market
-    function _tune(
-        uint256 id_,
-        uint48 time_,
-        uint256 price_
-    ) internal {
+    function _tune(uint256 id_, uint48 time_, uint256 price_) internal {
         BondMetadata memory meta = metadata[id_];
         BondMarket memory market = markets[id_];
         BondTerms memory term = terms[id_];
@@ -598,17 +594,14 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
         uint256 duration = uint256(term.conclusion - term.start);
 
         // Standardize capacity into an payout token amount
-        uint256 capacity = market.capacityInQuote
-            ? market.capacity.mulDiv(market.scale, price_)
-            : market.capacity;
+        uint256 capacity = market.capacityInQuote ? market.capacity.mulDiv(market.scale, price_) : market.capacity;
         // Calculate initial capacity based on remaining capacity and amount sold/purchased up to this point
         uint256 initialCapacity = capacity +
             (market.capacityInQuote ? market.purchased.mulDiv(market.scale, price_) : market.sold);
 
         // Calculate timeNeutralCapacity as the capacity expected to be sold up to this point and the current capacity
         // Higher than initial capacity means the market is undersold, lower than initial capacity means the market is oversold
-        uint256 timeNeutralCapacity = initialCapacity.mulDiv(duration - timeRemaining, duration) +
-            capacity;
+        uint256 timeNeutralCapacity = initialCapacity.mulDiv(duration - timeRemaining, duration) + capacity;
 
         if (
             (market.capacity < meta.tuneBelowCapacity && timeNeutralCapacity < initialCapacity) ||
@@ -627,10 +620,7 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
             // doesn't cause larger fluctuations towards the end of the market.
             //
             // Calculate target debt from the timeNeutralCapacity and the ratio of debt decay interval and the length of the market
-            uint256 targetDebt = timeNeutralCapacity.mulDiv(
-                uint256(meta.debtDecayInterval),
-                duration
-            );
+            uint256 targetDebt = timeNeutralCapacity.mulDiv(uint256(meta.debtDecayInterval), duration);
 
             // Derive a new control variable from the target debt
             uint256 newControlVariable = price_.mulDivUp(market.scale, targetDebt);
@@ -678,29 +668,21 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
     /// @return decay           change in control variable
     /// @return secondsSince    seconds since last change in control variable
     /// @return active          whether or not change remains active
-    function _controlDecay(uint256 id_)
-        internal
-        view
-        returns (
-            uint256 decay,
-            uint48 secondsSince,
-            bool active
-        )
-    {
+    function _controlDecay(uint256 id_) internal view returns (uint256 decay, uint48 secondsSince, bool active) {
         Adjustment memory info = adjustments[id_];
         if (!info.active) return (0, 0, false);
 
         secondsSince = uint48(block.timestamp) - info.lastAdjustment;
         active = secondsSince < info.timeToAdjusted;
-        decay = active
-            ? info.change.mulDiv(uint256(secondsSince), uint256(info.timeToAdjusted))
-            : info.change;
+        decay = active ? info.change.mulDiv(uint256(secondsSince), uint256(info.timeToAdjusted)) : info.change;
     }
 
     /* ========== EXTERNAL VIEW FUNCTIONS ========== */
 
     /// @inheritdoc IBondAuctioneer
-    function getMarketInfoForPurchase(uint256 id_)
+    function getMarketInfoForPurchase(
+        uint256 id_
+    )
         external
         view
         returns (
@@ -736,11 +718,7 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
     }
 
     /// @inheritdoc IBondAuctioneer
-    function payoutFor(
-        uint256 amount_,
-        uint256 id_,
-        address referrer_
-    ) public view override returns (uint256) {
+    function payoutFor(uint256 amount_, uint256 id_, address referrer_) public view override returns (uint256) {
         // Calculate the payout for the given amount of tokens
         uint256 fee = amount_.mulDiv(_teller.getFee(referrer_), 1e5);
         uint256 payout = (amount_ - fee).mulDiv(markets[id_].scale, marketPrice(id_));
@@ -762,9 +740,7 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
         BondMarket memory market = markets[id_];
 
         // Convert capacity to payout token units for comparison with max payout
-        uint256 capacity = market.capacityInQuote
-            ? market.capacity.mulDiv(market.scale, price)
-            : market.capacity;
+        uint256 capacity = market.capacityInQuote ? market.capacity.mulDiv(market.scale, price) : market.capacity;
 
         // Cap max payout at the remaining capacity
         return market.maxPayout > capacity ? capacity : market.maxPayout;
@@ -776,9 +752,7 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
         // Maximum of the maxPayout and the remaining capacity converted to quote tokens
         BondMarket memory market = markets[id_];
         uint256 price = marketPrice(id_);
-        uint256 quoteCapacity = market.capacityInQuote
-            ? market.capacity
-            : market.capacity.mulDiv(price, market.scale);
+        uint256 quoteCapacity = market.capacityInQuote ? market.capacity : market.capacity.mulDiv(price, market.scale);
         uint256 maxQuote = market.maxPayout.mulDiv(price, market.scale);
         uint256 amountAccepted = quoteCapacity < maxQuote ? quoteCapacity : maxQuote;
 

@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 pragma solidity 0.8.15;
 
+import {ERC20} from "solmate/src/tokens/ERC20.sol";
 import {BondBaseFPA, IBondAggregator, Authority} from "./bases/BondBaseFPA.sol";
 import {IBondTeller} from "./interfaces/IBondTeller.sol";
 import {IBondFixedExpiryTeller} from "./interfaces/IBondFixedExpiryTeller.sol";
+import {IWrapper} from "./interfaces/IWrapper.sol";
 
 /// @title Bond Fixed-Expiry Fixed Price Auctioneer
 /// @notice Bond Fixed-Expiry Fixed Price Auctioneer Contract
@@ -33,11 +35,12 @@ contract BondFixedExpiryFPA is BondBaseFPA {
         IBondTeller teller_,
         IBondAggregator aggregator_,
         address guardian_,
-        Authority authority_
-    ) BondBaseFPA(teller_, aggregator_, guardian_, authority_) {}
+        Authority authority_,
+        IWrapper wrapper_
+    ) BondBaseFPA(teller_, aggregator_, guardian_, authority_, wrapper_) {}
 
     /// @inheritdoc BondBaseFPA
-    function createMarket(bytes calldata params_) external override returns (uint256) {
+    function createMarket(bytes calldata params_) external payable override returns (uint256) {
         // Decode params into the struct type expected by this auctioneer
         MarketParams memory params = abi.decode(params_, (MarketParams));
 
@@ -57,7 +60,11 @@ contract BondFixedExpiryFPA is BondBaseFPA {
         uint256 marketId = _createMarket(params);
 
         // Create bond token (ERC20 for fixed expiry) if not instant swap
-        if (params.vesting != 0) IBondFixedExpiryTeller(address(_teller)).deploy(params.payoutToken, params.vesting);
+        if (params.vesting != 0)
+            IBondFixedExpiryTeller(address(_teller)).deploy(
+                address(params.payoutToken) == address(0) ? ERC20(address(_wrapper)) : params.payoutToken,
+                params.vesting
+            );
 
         // Return market ID
         return marketId;
