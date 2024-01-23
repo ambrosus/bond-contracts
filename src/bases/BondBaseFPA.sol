@@ -128,6 +128,10 @@ abstract contract BondBaseFPA is IBondFPA, Auth {
             params_.payoutToken = ERC20(address(_wrapper));
         }
 
+        if (params_.quoteToken == ERC20(address(0))) {
+            params_.quoteToken = ERC20(address(_wrapper));
+        }
+
         {
             // Check that the auctioneer is allowing new markets to be created
             if (!allowNewMarkets) revert Auctioneer_NewMarketsNotAllowed();

@@ -138,7 +138,7 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
         uint256 id_,
         uint256 amount_,
         uint256 minAmountOut_
-    ) external virtual nonReentrant returns (uint256, uint48) {
+    ) external payable virtual nonReentrant returns (uint256, uint48) {
         ERC20 payoutToken;
         ERC20 quoteToken;
         uint48 vesting;
@@ -185,20 +185,30 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
 
         // Calculate amount net of fees
         uint256 amountLessFee = amount_ - feePaid_;
+        address quoteTokensRecipient = callbackAddr != address(0) ? callbackAddr : owner;
 
-        // Have to transfer to teller first since fee is in quote token
-        // Check balance before and after to ensure full amount received, revert if not
-        // Handles edge cases like fee-on-transfer tokens (which are not supported)
-        uint256 quoteBalance = quoteToken.balanceOf(address(this));
-        quoteToken.safeTransferFrom(msg.sender, address(this), amount_);
-        if (quoteToken.balanceOf(address(this)) < quoteBalance + amount_) revert Teller_UnsupportedToken();
+        // if quoteToken is native token, ensure msg.value is equal to amount_
+        // otherwise, transfer quoteToken from msg.sender to this contract
+        if (address(quoteToken) == address(_wrapper)) {
+            if (msg.value != amount_) revert Teller_InvalidParams();
+
+            bool sent = payable(quoteTokensRecipient).send(amountLessFee);
+            require(sent, "Failed to send native tokens");
+        } else {
+            // Have to transfer to teller first since fee is in quote token
+            // Check balance before and after to ensure full amount received, revert if not
+            // Handles edge cases like fee-on-transfer tokens (which are not supported)
+            uint256 quoteBalance = quoteToken.balanceOf(address(this));
+            quoteToken.safeTransferFrom(msg.sender, address(this), amount_);
+            if (quoteToken.balanceOf(address(this)) < quoteBalance + amount_) revert Teller_UnsupportedToken();
+
+            // Send quote token to callback (transferred in first to allow use during callback)
+            quoteToken.safeTransfer(quoteTokensRecipient, amountLessFee);
+        }
 
         // If callback address supplied, transfer tokens from teller to callback, then execute callback function,
         // and ensure proper amount of tokens transferred in.
         if (callbackAddr != address(0)) {
-            // Send quote token to callback (transferred in first to allow use during callback)
-            quoteToken.safeTransfer(callbackAddr, amountLessFee);
-
             // Call the callback function to receive payout tokens for payout
             uint256 payoutBalance = payoutToken.balanceOf(address(this));
             IBondCallback(callbackAddr).callback(id_, amountLessFee, payout_);
@@ -213,8 +223,6 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
             uint256 payoutBalance = payoutToken.balanceOf(address(this));
             payoutToken.safeTransferFrom(owner, address(this), payout_);
             if (payoutToken.balanceOf(address(this)) < (payoutBalance + payout_)) revert Teller_UnsupportedToken();
-
-            quoteToken.safeTransfer(owner, amountLessFee);
         }
     }
 

@@ -19,7 +19,7 @@ interface IBondTeller {
         uint256 id_,
         uint256 amount_,
         uint256 minAmountOut_
-    ) external returns (uint256, uint48);
+    ) external payable returns (uint256, uint48);
 
     /// @notice          Get current fee charged by the teller based on the combined protocol and referrer fee
     /// @param referrer_ Address of the referrer
