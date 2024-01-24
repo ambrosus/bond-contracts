@@ -3,7 +3,6 @@ pragma solidity 0.8.15;
 
 import {BondBaseFPA, IBondAggregator, Authority} from "./bases/BondBaseFPA.sol";
 import {IBondTeller} from "./interfaces/IBondTeller.sol";
-import {IWrapper} from "./interfaces/IWrapper.sol";
 
 /// @title Bond Fixed-Term Fixed Price Auctioneer
 /// @notice Bond Fixed-Term Fixed Price Auctioneer Contract
@@ -33,9 +32,8 @@ contract BondFixedTermFPA is BondBaseFPA {
         IBondTeller teller_,
         IBondAggregator aggregator_,
         address guardian_,
-        Authority authority_,
-        IWrapper wrapper_
-    ) BondBaseFPA(teller_, aggregator_, guardian_, authority_, wrapper_) {}
+        Authority authority_
+    ) BondBaseFPA(teller_, aggregator_, guardian_, authority_) {}
 
     /* ========== MARKET FUNCTIONS ========== */
     /// @inheritdoc BondBaseFPA

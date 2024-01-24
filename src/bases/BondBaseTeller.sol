@@ -6,10 +6,8 @@ import {ReentrancyGuard} from "solmate/src/utils/ReentrancyGuard.sol";
 import {Auth, Authority} from "solmate/src/auth/Auth.sol";
 
 import {IBondTeller} from "../interfaces/IBondTeller.sol";
-import {IBondCallback} from "../interfaces/IBondCallback.sol";
 import {IBondAggregator} from "../interfaces/IBondAggregator.sol";
 import {IBondAuctioneer} from "../interfaces/IBondAuctioneer.sol";
-import {IWrapper} from "../interfaces/IWrapper.sol";
 
 import {TransferHelper} from "../lib/TransferHelper.sol";
 import {FullMath} from "../lib/FullMath.sol";
@@ -73,19 +71,14 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
     // BondAggregator contract with utility functions
     IBondAggregator internal immutable _aggregator;
 
-    // Wrapper contract that handles deposits and withdrawals in native tokens
-    IWrapper internal immutable _wrapper;
-
     constructor(
         address protocol_,
         IBondAggregator aggregator_,
         address guardian_,
-        Authority authority_,
-        IWrapper wrapper_
+        Authority authority_
     ) Auth(guardian_, authority_) {
         _protocol = protocol_;
         _aggregator = aggregator_;
-        _wrapper = wrapper_;
 
         // Explicitly setting these values to zero to document
         protocolFee = 0;
@@ -154,7 +147,7 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
         {
             IBondAuctioneer auctioneer = _aggregator.getAuctioneer(id_);
             address owner;
-            (owner, , payoutToken, quoteToken, vesting, ) = auctioneer.getMarketInfoForPurchase(id_);
+            (owner, payoutToken, quoteToken, vesting, ) = auctioneer.getMarketInfoForPurchase(id_);
 
             // Auctioneer handles bond pricing, capacity, and duration
             uint256 amountLessFee = amount_ - toReferrer - toProtocol;
@@ -166,7 +159,7 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
         rewards[_protocol][quoteToken] += toProtocol;
 
         // Transfer quote tokens from sender and ensure enough payout tokens are available
-        _handleTransfers(id_, amount_, payout, toReferrer + toProtocol);
+        _handleTransfers(id_, amount_, toReferrer + toProtocol);
 
         // Handle payout to user (either transfer tokens if instant swap or issue bond token)
         uint48 expiry = _handlePayout(recipient_, payout, payoutToken, vesting);
@@ -176,23 +169,20 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
         return (payout, expiry);
     }
 
-    /// @notice     Handles transfer of funds from user and market owner/callback
-    function _handleTransfers(uint256 id_, uint256 amount_, uint256 payout_, uint256 feePaid_) internal {
+    /// @notice     Handles transfer of funds from user
+    function _handleTransfers(uint256 id_, uint256 amount_, uint256 feePaid_) internal {
         // Get info from auctioneer
-        (address owner, address callbackAddr, ERC20 payoutToken, ERC20 quoteToken, , ) = _aggregator
-            .getAuctioneer(id_)
-            .getMarketInfoForPurchase(id_);
+        (address owner, , ERC20 quoteToken, , ) = _aggregator.getAuctioneer(id_).getMarketInfoForPurchase(id_);
 
         // Calculate amount net of fees
         uint256 amountLessFee = amount_ - feePaid_;
-        address quoteTokensRecipient = callbackAddr != address(0) ? callbackAddr : owner;
 
         // if quoteToken is native token, ensure msg.value is equal to amount_
         // otherwise, transfer quoteToken from msg.sender to this contract
-        if (address(quoteToken) == address(_wrapper)) {
+        if (address(quoteToken) == address(0)) {
             if (msg.value != amount_) revert Teller_InvalidParams();
 
-            bool sent = payable(quoteTokensRecipient).send(amountLessFee);
+            bool sent = payable(owner).send(amountLessFee);
             require(sent, "Failed to send native tokens");
         } else {
             // Have to transfer to teller first since fee is in quote token
@@ -203,30 +193,11 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
             if (quoteToken.balanceOf(address(this)) < quoteBalance + amount_) revert Teller_UnsupportedToken();
 
             // Send quote token to callback (transferred in first to allow use during callback)
-            quoteToken.safeTransfer(quoteTokensRecipient, amountLessFee);
-        }
-
-        // If callback address supplied, transfer tokens from teller to callback, then execute callback function,
-        // and ensure proper amount of tokens transferred in.
-        if (callbackAddr != address(0)) {
-            // Call the callback function to receive payout tokens for payout
-            uint256 payoutBalance = payoutToken.balanceOf(address(this));
-            IBondCallback(callbackAddr).callback(id_, amountLessFee, payout_);
-
-            // Check to ensure that the callback sent the requested amount of payout tokens back to the teller
-            if (payoutToken.balanceOf(address(this)) < (payoutBalance + payout_)) revert Teller_InvalidCallback();
-        } else {
-            // If no callback is provided, transfer tokens from market owner to this contract
-            // for payout.
-            // Check balance before and after to ensure full amount received, revert if not
-            // Handles edge cases like fee-on-transfer tokens (which are not supported)
-            uint256 payoutBalance = payoutToken.balanceOf(address(this));
-            payoutToken.safeTransferFrom(owner, address(this), payout_);
-            if (payoutToken.balanceOf(address(this)) < (payoutBalance + payout_)) revert Teller_UnsupportedToken();
+            quoteToken.safeTransfer(owner, amountLessFee);
         }
     }
 
-    receive() external payable {} // need to receive native token from wrapper contract
+    receive() external payable {} // need to receive native token from auctioner
 
     /// @notice             Handle payout to recipient
     /// @dev                Implementation-agnostic. Must be implemented in contracts that
@@ -282,9 +253,16 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
         string memory monthStr = month < 10 ? string(abi.encodePacked("0", _uint2str(month))) : _uint2str(month);
         string memory dayStr = day < 10 ? string(abi.encodePacked("0", _uint2str(day))) : _uint2str(day);
 
+        string memory initialName = "amber";
+        string memory initialSymbol = "AMB";
+        if (address(underlying_) != address(0)) {
+            initialName = underlying_.name();
+            initialSymbol = underlying_.symbol();
+        }
+
         // Construct name/symbol strings.
-        name = string(abi.encodePacked(underlying_.name(), " ", yearStr, "-", monthStr, "-", dayStr));
-        symbol = string(abi.encodePacked(underlying_.symbol(), "-", yearStr, monthStr, dayStr));
+        name = string(abi.encodePacked(initialName, " ", yearStr, "-", monthStr, "-", dayStr));
+        symbol = string(abi.encodePacked(initialSymbol, "-", yearStr, monthStr, dayStr));
     }
 
     // Some fancy math to convert a uint into a string, courtesy of Provable Things.

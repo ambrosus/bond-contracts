@@ -88,19 +88,11 @@ contract LimitOrders is Auth {
         }
     }
 
-    function executeOrder(
-        Order calldata order_,
-        bytes calldata signature_,
-        uint256 fee_
-    ) external requiresAuth {
+    function executeOrder(Order calldata order_, bytes calldata signature_, uint256 fee_) external requiresAuth {
         _executeOrder(order_, signature_, fee_);
     }
 
-    function _executeOrder(
-        Order calldata order_,
-        bytes calldata signature_,
-        uint256 fee_
-    ) internal {
+    function _executeOrder(Order calldata order_, bytes calldata signature_, uint256 fee_) internal {
         // Validate order
         bytes32 digest = _validateOrder(order_, signature_);
 
@@ -137,17 +129,14 @@ contract LimitOrders is Auth {
             // after the max fee is taken out.
             if (minAmountOut != 0) {
                 uint256 scale = aggregator.marketScale(order_.marketId);
-                uint256 maxPrice = (order_.amount - order_.maxFee).mulDiv(
-                    scale,
-                    order_.minAmountOut
-                );
+                uint256 maxPrice = (order_.amount - order_.maxFee).mulDiv(scale, order_.minAmountOut);
                 minAmountOut = amount.mulDiv(scale, maxPrice);
             }
         }
 
         // Transfer tokens from user to this contract for the purchase
         IBondAuctioneer auctioneer = aggregator.getAuctioneer(order_.marketId);
-        (, , , ERC20 quoteToken, , ) = auctioneer.getMarketInfoForPurchase(order_.marketId);
+        (, , ERC20 quoteToken, , ) = auctioneer.getMarketInfoForPurchase(order_.marketId);
         quoteToken.safeTransferFrom(order_.user, address(this), amount + fee_);
 
         // Approve teller to spend token
@@ -164,11 +153,7 @@ contract LimitOrders is Auth {
         emit OrderExecuted(digest);
     }
 
-    function _validateOrder(Order calldata order_, bytes calldata signature_)
-        internal
-        view
-        returns (bytes32)
-    {
+    function _validateOrder(Order calldata order_, bytes calldata signature_) internal view returns (bytes32) {
         // Validate the user is not the zero address (must do this to avoid bypassing the signer check)
         // Although, transfers from the zero address would later fail in _executeOrder, so it may not be necessary
         if (order_.user == address(0)) revert LimitOrders_InvalidUser();
@@ -262,9 +247,7 @@ contract LimitOrders is Auth {
         return
             keccak256(
                 abi.encode(
-                    keccak256(
-                        "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
-                    ),
+                    keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
                     keccak256("Bond Protocol Limit Orders"),
                     keccak256("v1.0.0"),
                     block.chainid,

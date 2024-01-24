@@ -6,7 +6,6 @@ import {ClonesWithImmutableArgs} from "clones-with-immutable-args/ClonesWithImmu
 
 import {BondBaseTeller, IBondAggregator, Authority} from "./bases/BondBaseTeller.sol";
 import {IBondFixedExpiryTeller} from "./interfaces/IBondFixedExpiryTeller.sol";
-import {IWrapper} from "./interfaces/IWrapper.sol";
 import {ERC20BondToken} from "./ERC20BondToken.sol";
 
 import {TransferHelper} from "./lib/TransferHelper.sol";
@@ -48,9 +47,8 @@ contract BondFixedExpiryTeller is BondBaseTeller, IBondFixedExpiryTeller {
         address protocol_,
         IBondAggregator aggregator_,
         address guardian_,
-        Authority authority_,
-        IWrapper wrapper_
-    ) BondBaseTeller(protocol_, aggregator_, guardian_, authority_, wrapper_) {
+        Authority authority_
+    ) BondBaseTeller(protocol_, aggregator_, guardian_, authority_) {
         bondTokenImplementation = new ERC20BondToken();
     }
 
@@ -85,10 +83,7 @@ contract BondFixedExpiryTeller is BondBaseTeller, IBondFixedExpiryTeller {
             bondTokens[payoutToken_][expiry].mint(recipient_, payout_);
         } else {
             // If no expiry, then transfer payout directly to user
-
-            // If payout token is wrapped, convert it to native and transfer
-            if (address(payoutToken_) == address(_wrapper)) {
-                _wrapper.withdraw(payout_);
+            if (address(payoutToken_) == address(0)) {
                 bool sent = payable(recipient_).send(payout_);
                 require(sent, "Failed to send native tokens");
             } else {
@@ -159,9 +154,8 @@ contract BondFixedExpiryTeller is BondBaseTeller, IBondFixedExpiryTeller {
         // Burn bond token and transfer underlying
         token_.burn(msg.sender, amount_);
 
-        // If payout token is wrapped, convert it to native and transfer
-        if (address(underlying) == address(_wrapper)) {
-            _wrapper.withdraw(amount_);
+        // If payout token is native, handle it differently
+        if (address(underlying) == address(0)) {
             bool sent = payable(msg.sender).send(amount_);
             require(sent, "Failed to send native tokens");
         } else {
@@ -183,11 +177,18 @@ contract BondFixedExpiryTeller is BondBaseTeller, IBondFixedExpiryTeller {
         // Create bond token if one doesn't already exist
         ERC20BondToken bondToken = bondTokens[underlying_][expiry];
         if (bondToken == ERC20BondToken(address(0))) {
+            // If token is native than decimals equal to 18,
+            // otherwise get decimals from token contrtact
+            uint8 decimals = 18;
+            if (address(underlying_) != address(0)) {
+                decimals = uint8(underlying_.decimals());
+            }
+
             (string memory name, string memory symbol) = _getNameAndSymbol(underlying_, expiry);
             bytes memory tokenData = abi.encodePacked(
                 bytes32(bytes(name)),
                 bytes32(bytes(symbol)),
-                uint8(underlying_.decimals()),
+                uint8(decimals),
                 underlying_,
                 uint256(expiry),
                 address(this)
@@ -205,7 +206,7 @@ contract BondFixedExpiryTeller is BondBaseTeller, IBondFixedExpiryTeller {
         if (address(_aggregator.getTeller(id_)) != address(this)) revert Teller_InvalidParams();
 
         // Get the underlying and expiry for the market
-        (, , ERC20 underlying, , uint48 expiry, ) = _aggregator.getAuctioneer(id_).getMarketInfoForPurchase(id_);
+        (, ERC20 underlying, , uint48 expiry, ) = _aggregator.getAuctioneer(id_).getMarketInfoForPurchase(id_);
 
         return bondTokens[underlying][expiry];
     }

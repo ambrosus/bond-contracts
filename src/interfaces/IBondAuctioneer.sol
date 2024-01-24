@@ -67,36 +67,18 @@ interface IBondAuctioneer {
     /// @param status_      Allow market creation (true) : Disallow market creation (false)
     function setAllowNewMarkets(bool status_) external;
 
-    /// @notice             Change whether a market creator is allowed to use a callback address in their markets or not
-    /// @notice             Must be guardian
-    /// @dev                Callback is believed to be safe, but a whitelist is implemented to prevent abuse
-    /// @param creator_     Address of market creator
-    /// @param status_      Allow callback (true) : Disallow callback (false)
-    function setCallbackAuthStatus(address creator_, bool status_) external;
-
     /* ========== VIEW FUNCTIONS ========== */
 
     /// @notice                 Provides information for the Teller to execute purchases on a Market
     /// @param id_              Market ID
-    /// @return owner           Address of the market owner (tokens transferred from this address if no callback)
-    /// @return callbackAddr    Address of the callback contract to get tokens for payouts
+    /// @return owner           Address of the market owner (tokens transferred from this address)
     /// @return payoutToken     Payout Token (token paid out) for the Market
     /// @return quoteToken      Quote Token (token received) for the Market
     /// @return vesting         Timestamp or duration for vesting, implementation-dependent
     /// @return maxPayout       Maximum amount of payout tokens you can purchase in one transaction
     function getMarketInfoForPurchase(
         uint256 id_
-    )
-        external
-        view
-        returns (
-            address owner,
-            address callbackAddr,
-            ERC20 payoutToken,
-            ERC20 quoteToken,
-            uint48 vesting,
-            uint256 maxPayout
-        );
+    ) external view returns (address owner, ERC20 payoutToken, ERC20 quoteToken, uint48 vesting, uint256 maxPayout);
 
     /// @notice             Calculate current market price of payout token in quote tokens
     /// @param id_          ID of market

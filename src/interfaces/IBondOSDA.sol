@@ -11,7 +11,6 @@ interface IBondOSDA is IBondAuctioneer {
         address owner; // market owner. sends payout tokens, receives quote tokens (defaults to creator)
         ERC20 payoutToken; // token to pay depositors with
         ERC20 quoteToken; // token to accept as payment
-        address callbackAddr; // address to call for any operations on bond purchase. Must implement IBondCallback.
         bool capacityInQuote; // capacity limit is in payment token (true) or in payout (false, default)
         uint256 capacity; // capacity remaining
         uint256 maxPayout; // max payout tokens out in one order
@@ -36,24 +35,22 @@ interface IBondOSDA is IBondAuctioneer {
     /// @param params_      Encoded bytes array, with the following elements
     /// @dev                    0. Payout Token (token paid out)
     /// @dev                    1. Quote Token (token to be received)
-    /// @dev                    2. Callback contract address, should conform to IBondCallback. If 0x00, tokens will be transferred from market.owner
-    /// @dev                    3. Oracle contract address, should conform to IBondOracle.
-    /// @dev                    4. Base discount with 3 decimals of precision, e.g. 10_000 = 10%. Sets a base discount against the oracle price before time-related decay is applied.
-    /// @dev                    5. Maximum discount from current oracle price with 3 decimals of precision, sets absolute minimum price for market
-    /// @dev                    6. Target interval discount with 3 decimals of precision. The discount to be achieved over a deposit interval (in addition to base discount).
-    /// @dev                    7. Is Capacity in Quote Token?
-    /// @dev                    8. Capacity (amount in the decimals of the token chosen to provided capacity in).
-    /// @dev                    9. Deposit interval (seconds). Desired frequency of bonds. Used to calculate max payout of market (maxPayout = duration / depositInterval * capacity)
-    /// @dev                    10. Is fixed term ? Vesting length (seconds) : Vesting expiry (timestamp).
+    /// @dev                    2. Oracle contract address, should conform to IBondOracle.
+    /// @dev                    3. Base discount with 3 decimals of precision, e.g. 10_000 = 10%. Sets a base discount against the oracle price before time-related decay is applied.
+    /// @dev                    4. Maximum discount from current oracle price with 3 decimals of precision, sets absolute minimum price for market
+    /// @dev                    5. Target interval discount with 3 decimals of precision. The discount to be achieved over a deposit interval (in addition to base discount).
+    /// @dev                    6. Is Capacity in Quote Token?
+    /// @dev                    7. Capacity (amount in the decimals of the token chosen to provided capacity in).
+    /// @dev                    8. Deposit interval (seconds). Desired frequency of bonds. Used to calculate max payout of market (maxPayout = duration / depositInterval * capacity)
+    /// @dev                    9. Is fixed term ? Vesting length (seconds) : Vesting expiry (timestamp).
     /// @dev                        A 'vesting' param longer than 50 years is considered a timestamp for fixed expiry.
-    /// @dev                    11. Start Time of the Market (timestamp) - Allows starting a market in the future.
+    /// @dev                    10. Start Time of the Market (timestamp) - Allows starting a market in the future.
     /// @dev                        If a start time is provided, the txn must be sent prior to the start time (functions as a deadline).
     /// @dev                        If start time is not provided (i.e. 0), the market will start immediately.
-    /// @dev                    12. Market Duration (seconds) - Duration of the market in seconds.
+    /// @dev                    11. Market Duration (seconds) - Duration of the market in seconds.
     struct MarketParams {
         ERC20 payoutToken;
         ERC20 quoteToken;
-        address callbackAddr;
         IBondOracle oracle;
         uint48 baseDiscount;
         uint48 maxDiscountFromCurrent;

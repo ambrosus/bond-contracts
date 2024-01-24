@@ -6,10 +6,8 @@ import {Auth, Authority} from "solmate/src/auth/Auth.sol";
 
 import {IBondOFDA, IBondAuctioneer} from "../interfaces/IBondOFDA.sol";
 import {IBondTeller} from "../interfaces/IBondTeller.sol";
-import {IBondCallback} from "../interfaces/IBondCallback.sol";
 import {IBondAggregator} from "../interfaces/IBondAggregator.sol";
 import {IBondOracle} from "../interfaces/IBondOracle.sol";
-import {IWrapper} from "../interfaces/IWrapper.sol";
 
 import {TransferHelper} from "../lib/TransferHelper.sol";
 import {FullMath} from "../lib/FullMath.sol";
@@ -50,6 +48,7 @@ abstract contract BondBaseOFDA is IBondOFDA, Auth {
     error Auctioneer_NotAuthorized();
     error Auctioneer_NewMarketsNotAllowed();
     error Auctioneer_OraclePriceZero();
+    error Auctioneer_UnsupportedToken();
 
     /* ========== EVENTS ========== */
 
@@ -91,19 +90,14 @@ abstract contract BondBaseOFDA is IBondOFDA, Auth {
     // BondTeller contract that handles interactions with users and issues tokens
     IBondTeller internal immutable _teller;
 
-    // Wrapper contract that handles deposits and withdrawals in native tokens
-    IWrapper internal immutable _wrapper;
-
     constructor(
         IBondTeller teller_,
         IBondAggregator aggregator_,
         address guardian_,
-        Authority authority_,
-        IWrapper wrapper_
+        Authority authority_
     ) Auth(guardian_, authority_) {
         _aggregator = aggregator_;
         _teller = teller_;
-        _wrapper = wrapper_;
 
         minDepositInterval = 1 hours;
         minMarketDuration = 1 days;
@@ -118,19 +112,10 @@ abstract contract BondBaseOFDA is IBondOFDA, Auth {
 
     /// @notice core market creation logic, see IBondOFDA.MarketParams documentation
     function _createMarket(MarketParams memory params_) internal returns (uint256) {
-        bool isPayoutTokenNative = false;
-        if (params_.payoutToken == ERC20(address(0))) {
-            isPayoutTokenNative = true;
-            params_.payoutToken = ERC20(address(_wrapper));
-        }
-
         // Upfront permission and timing checks
         {
             // Check that the auctioneer is allowing new markets to be created
             if (!allowNewMarkets) revert Auctioneer_NewMarketsNotAllowed();
-            // Restrict the use of a callback address unless allowed
-            if (!callbackAuthorized[msg.sender] && params_.callbackAddr != address(0))
-                revert Auctioneer_NotAuthorized();
             // Start time must be zero or in the future
             if (params_.start > 0 && params_.start < block.timestamp) revert Auctioneer_InvalidParams();
         }
@@ -142,7 +127,6 @@ abstract contract BondBaseOFDA is IBondOFDA, Auth {
         market.owner = msg.sender;
         market.quoteToken = params_.quoteToken;
         market.payoutToken = params_.payoutToken;
-        market.callbackAddr = params_.callbackAddr;
         market.capacityInQuote = params_.capacityInQuote;
         market.capacity = params_.capacity;
 
@@ -188,15 +172,20 @@ abstract contract BondBaseOFDA is IBondOFDA, Auth {
             )
             : params_.capacity;
 
-        // Wrap native tokens
-        if (isPayoutTokenNative) {
+        // If payout is native token
+        if (address(params_.payoutToken) == address(0)) {
             // Ensure capacity is equal to the value sent
             if (capacityInPayout != msg.value) revert Auctioneer_InvalidParams();
-
-            // Wrap native tokens
-            _wrapper.deposit{value: msg.value}();
-            // Transfer tokens back to user
-            params_.payoutToken.safeTransfer(msg.sender, msg.value);
+            // Send tokens to teller as it operates over purchase
+            bool sent = payable(address(_teller)).send(capacityInPayout);
+            require(sent, "Failed to send tokens to teller");
+        } else {
+            // Check balance before and after to ensure full amount received, revert if not
+            // Handles edge cases like fee-on-transfer tokens (which are not supported)
+            uint256 payoutBalance = params_.payoutToken.balanceOf(address(_teller));
+            params_.payoutToken.safeTransferFrom(msg.sender, address(_teller), capacityInPayout);
+            if (params_.payoutToken.balanceOf(address(_teller)) < payoutBalance + capacityInPayout)
+                revert Auctioneer_UnsupportedToken();
         }
 
         // Calculate the maximum payout amount for this market
@@ -221,12 +210,20 @@ abstract contract BondBaseOFDA is IBondOFDA, Auth {
         ERC20 payoutToken_,
         uint48 fixedDiscount_
     ) internal returns (uint256, uint256, uint256) {
-        // Ensure token decimals are in bounds
-        uint8 payoutTokenDecimals = payoutToken_.decimals();
-        uint8 quoteTokenDecimals = quoteToken_.decimals();
+        // Default value for native token
+        uint8 payoutTokenDecimals = 18;
+        uint8 quoteTokenDecimals = 18;
 
-        if (payoutTokenDecimals < 6 || payoutTokenDecimals > 18) revert Auctioneer_InvalidParams();
-        if (quoteTokenDecimals < 6 || quoteTokenDecimals > 18) revert Auctioneer_InvalidParams();
+        // Ensure token decimals are in bounds
+        // If token is native no need to check decimals
+        if (address(payoutToken_) != address(0)) {
+            payoutTokenDecimals = payoutToken_.decimals();
+            if (payoutTokenDecimals < 6 || payoutTokenDecimals > 18) revert Auctioneer_InvalidParams();
+        }
+        if (address(quoteToken_) != address(0)) {
+            quoteTokenDecimals = quoteToken_.decimals();
+            if (quoteTokenDecimals < 6 || quoteTokenDecimals > 18) revert Auctioneer_InvalidParams();
+        }
 
         // Check that oracle is valid. It should:
         // 1. Be a contract
@@ -324,12 +321,6 @@ abstract contract BondBaseOFDA is IBondOFDA, Auth {
     }
 
     /// @inheritdoc IBondAuctioneer
-    function setCallbackAuthStatus(address creator_, bool status_) external override requiresAuth {
-        // Restricted to authorized addresses
-        callbackAuthorized[creator_] = status_;
-    }
-
-    /// @inheritdoc IBondAuctioneer
     function closeMarket(uint256 id_) external override {
         if (msg.sender != markets[id_].owner) revert Auctioneer_OnlyMarketOwner();
         terms[id_].conclusion = uint48(block.timestamp);
@@ -350,9 +341,6 @@ abstract contract BondBaseOFDA is IBondOFDA, Auth {
 
         BondMarket storage market = markets[id_];
         BondTerms memory term = terms[id_];
-
-        // If market uses a callback, check that owner is still callback authorized
-        if (market.callbackAddr != address(0) && !callbackAuthorized[market.owner]) revert Auctioneer_NotAuthorized();
 
         // Check if market is live, if not revert
         if (!isLive(id_)) revert Auctioneer_MarketNotActive();
@@ -416,27 +404,9 @@ abstract contract BondBaseOFDA is IBondOFDA, Auth {
     /// @inheritdoc IBondAuctioneer
     function getMarketInfoForPurchase(
         uint256 id_
-    )
-        external
-        view
-        returns (
-            address owner,
-            address callbackAddr,
-            ERC20 payoutToken,
-            ERC20 quoteToken,
-            uint48 vesting,
-            uint256 maxPayout_
-        )
-    {
+    ) external view returns (address owner, ERC20 payoutToken, ERC20 quoteToken, uint48 vesting, uint256 maxPayout_) {
         BondMarket memory market = markets[id_];
-        return (
-            market.owner,
-            market.callbackAddr,
-            market.payoutToken,
-            market.quoteToken,
-            terms[id_].vesting,
-            maxPayout(id_)
-        );
+        return (market.owner, market.payoutToken, market.quoteToken, terms[id_].vesting, maxPayout(id_));
     }
 
     /// @inheritdoc IBondAuctioneer

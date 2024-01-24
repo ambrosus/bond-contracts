@@ -5,7 +5,6 @@ import {ERC20} from "solmate/src/tokens/ERC20.sol";
 
 import {BondBaseTeller, IBondAggregator, Authority} from "./bases/BondBaseTeller.sol";
 import {IBondFixedTermTeller} from "./interfaces/IBondFixedTermTeller.sol";
-import {IWrapper} from "./interfaces/IWrapper.sol";
 
 import {TransferHelper} from "./lib/TransferHelper.sol";
 import {FullMath} from "./lib/FullMath.sol";
@@ -43,9 +42,8 @@ contract BondFixedTermTeller is BondBaseTeller, IBondFixedTermTeller, ERC1155 {
         address protocol_,
         IBondAggregator aggregator_,
         address guardian_,
-        Authority authority_,
-        IWrapper wrapper_
-    ) BondBaseTeller(protocol_, aggregator_, guardian_, authority_, wrapper_) {}
+        Authority authority_
+    ) BondBaseTeller(protocol_, aggregator_, guardian_, authority_) {}
 
     /* ========== PURCHASE ========== */
 
@@ -89,10 +87,7 @@ contract BondFixedTermTeller is BondBaseTeller, IBondFixedTermTeller, ERC1155 {
             _mintToken(recipient_, tokenId, payout_);
         } else {
             // If no expiry, then transfer payout directly to user
-
-            // If payout token is wrapped, convert it to native and transfer
-            if (address(payoutToken_) == address(_wrapper)) {
-                _wrapper.withdraw(payout_);
+            if (address(payoutToken_) == address(0)) {
                 bool sent = payable(recipient_).send(payout_);
                 require(sent, "Failed to send native tokens");
             } else {
@@ -162,9 +157,8 @@ contract BondFixedTermTeller is BondBaseTeller, IBondFixedTermTeller, ERC1155 {
         // Burn bond token and transfer underlying to sender
         _burnToken(msg.sender, tokenId_, amount_);
 
-        // If payout token is wrapped, convert it to native and transfer
-        if (address(meta.underlying) == address(_wrapper)) {
-            _wrapper.withdraw(amount_);
+        // If payout token is native, handle it differently
+        if (address(meta.underlying) == address(0)) {
             bool sent = payable(msg.sender).send(amount_);
             require(sent, "Failed to send native tokens");
         } else {
@@ -211,8 +205,15 @@ contract BondFixedTermTeller is BondBaseTeller, IBondFixedTermTeller, ERC1155 {
         // Revert if expiry is in the past
         if (uint256(expiry) < block.timestamp) revert Teller_InvalidParams();
 
+        // If token is native than decimals equal to 18,
+        // otherwise get decimals from token contrtact
+        uint8 decimals = 18;
+        if (address(underlying_) != address(0)) {
+            decimals = uint8(underlying_.decimals());
+        }
+
         // Store token metadata
-        tokenMetadata[tokenId_] = TokenMetadata(true, underlying_, uint8(underlying_.decimals()), expiry, 0);
+        tokenMetadata[tokenId_] = TokenMetadata(true, underlying_, decimals, expiry, 0);
 
         emit ERC1155BondTokenCreated(tokenId_, underlying_, expiry);
     }

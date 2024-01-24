@@ -10,7 +10,6 @@ interface IBondSDA is IBondAuctioneer {
         address owner; // market owner. sends payout tokens, receives quote tokens (defaults to creator)
         ERC20 payoutToken; // token to pay depositors with
         ERC20 quoteToken; // token to accept as payment
-        address callbackAddr; // address to call for any operations on bond purchase. Must inherit to IBondCallback.
         bool capacityInQuote; // capacity limit is in payment token (true) or in payout (false, default)
         uint256 capacity; // capacity remaining
         uint256 totalDebt; // total payout token debt from market
@@ -69,12 +68,11 @@ interface IBondSDA is IBondAuctioneer {
     /// @param params_      Encoded bytes array, with the following elements
     /// @dev                    0. Payout Token (token paid out)
     /// @dev                    1. Quote Token (token to be received)
-    /// @dev                    2. Callback contract address, should conform to IBondCallback. If 0x00, tokens will be transferred from market.owner
-    /// @dev                    3. Is Capacity in Quote Token?
-    /// @dev                    4. Capacity (amount in quoteDecimals or amount in payoutDecimals)
-    /// @dev                    5. Formatted initial price (see note above)
-    /// @dev                    6. Formatted minimum price (see note above)
-    /// @dev                    7. Debt buffer. Percent with 3 decimals. Percentage over the initial debt to allow the market to accumulate at anyone time.
+    /// @dev                    2. Is Capacity in Quote Token?
+    /// @dev                    3. Capacity (amount in quoteDecimals or amount in payoutDecimals)
+    /// @dev                    4. Formatted initial price (see note above)
+    /// @dev                    5. Formatted minimum price (see note above)
+    /// @dev                    6. Debt buffer. Percent with 3 decimals. Percentage over the initial debt to allow the market to accumulate at anyone time.
     /// @dev                       Works as a circuit breaker for the market in case external conditions incentivize massive buying (e.g. stablecoin depeg).
     /// @dev                       Minimum is the greater of 10% or initial max payout as a percentage of capacity.
     /// @dev                       If the value is too small, the market will not be able function normally and close prematurely.
@@ -82,21 +80,20 @@ interface IBondSDA is IBondAuctioneer {
     /// @dev                       A good heuristic to calculate a debtBuffer with is to determine the amount of capacity that you think is reasonable to be expended
     /// @dev                       in a short duration as a percent, e.g. 25%. Then a reasonable debtBuffer would be: 0.25 * 1e3 * decayInterval / marketDuration
     /// @dev                       where decayInterval = max(3 days, 5 * depositInterval) and marketDuration = conclusion - creation time.
-    /// @dev                    8. Is fixed term ? Vesting length (seconds) : Vesting expiry (timestamp).
+    /// @dev                    7. Is fixed term ? Vesting length (seconds) : Vesting expiry (timestamp).
     /// @dev                        A 'vesting' param longer than 50 years is considered a timestamp for fixed expiry.
-    /// @dev                    9. Start Time of the Market (timestamp) - Allows starting a market in the future.
+    /// @dev                    8. Start Time of the Market (timestamp) - Allows starting a market in the future.
     /// @dev                        If a start time is provided, the txn must be sent prior to the start time (functions as a deadline).
     /// @dev                        If start time is not provided (i.e. 0), the market will start immediately.
-    /// @dev                    10. Market Duration (seconds) - Duration of the market in seconds.
-    /// @dev                    11. Deposit interval (seconds)
-    /// @dev                    12. Market scaling factor adjustment, ranges from -24 to +24 within the configured market bounds.
+    /// @dev                    9. Market Duration (seconds) - Duration of the market in seconds.
+    /// @dev                    10. Deposit interval (seconds)
+    /// @dev                    11. Market scaling factor adjustment, ranges from -24 to +24 within the configured market bounds.
     /// @dev                        Should be calculated as: (payoutDecimals - quoteDecimals) - ((payoutPriceDecimals - quotePriceDecimals) / 2)
     /// @dev                        Providing a scaling factor adjustment that doesn't follow this formula could lead to under or overflow errors in the market.
     /// @return                 ID of new bond market
     struct MarketParams {
         ERC20 payoutToken;
         ERC20 quoteToken;
-        address callbackAddr;
         bool capacityInQuote;
         uint256 capacity;
         uint256 formattedInitialPrice;
