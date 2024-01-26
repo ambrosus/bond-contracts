@@ -11,8 +11,7 @@ interface IBondOFDA is IBondAuctioneer {
         address owner; // market owner. sends payout tokens, receives quote tokens (defaults to creator)
         ERC20 payoutToken; // token to pay depositors with
         ERC20 quoteToken; // token to accept as payment
-        bool capacityInQuote; // capacity limit is in payment token (true) or in payout (false, default)
-        uint256 capacity; // capacity remaining
+        uint256 capacity; // capacity remaining in payout token
         uint256 maxPayout; // max payout tokens out in one order
         uint256 sold; // payout tokens out
         uint256 purchased; // quote tokens in
@@ -37,22 +36,20 @@ interface IBondOFDA is IBondAuctioneer {
     /// @dev                    2. Oracle contract address, should conform to IBondOracle.
     /// @dev                    3. Fixed discount with 3 decimals of precision, e.g. 10_000 = 10%. Percent to reduce oracle price by to calculate market price.
     /// @dev                    4. Maximum discount from current oracle price with 3 decimals of precision, sets absolute minimum price for market
-    /// @dev                    5. Is Capacity in Quote Token?
-    /// @dev                    6. Capacity (amount in the decimals of the token chosen to provided capacity in).
-    /// @dev                    7. Deposit interval (seconds). Desired frequency of bonds. Used to calculate max payout of market (maxPayout = length / depositInterval * capacity)
-    /// @dev                    8. Is fixed term ? Vesting length (seconds) : Vesting expiry (timestamp).
+    /// @dev                    5. Capacity in payout token.
+    /// @dev                    6. Deposit interval (seconds). Desired frequency of bonds. Used to calculate max payout of market (maxPayout = length / depositInterval * capacity)
+    /// @dev                    7. Is fixed term ? Vesting length (seconds) : Vesting expiry (timestamp).
     /// @dev                        A 'vesting' param longer than 50 years is considered a timestamp for fixed expiry.
-    /// @dev                    9. Start Time of the Market (timestamp) - Allows starting a market in the future.
+    /// @dev                    8. Start Time of the Market (timestamp) - Allows starting a market in the future.
     /// @dev                        If a start time is provided, the txn must be sent prior to the start time (functions as a deadline).
     /// @dev                        If start time is not provided (i.e. 0), the market will start immediately.
-    /// @dev                    10. Market Duration (seconds) - Duration of the market in seconds.
+    /// @dev                    9. Market Duration (seconds) - Duration of the market in seconds.
     struct MarketParams {
         ERC20 payoutToken;
         ERC20 quoteToken;
         IBondOracle oracle;
         uint48 fixedDiscount;
         uint48 maxDiscountFromCurrent;
-        bool capacityInQuote;
         uint256 capacity;
         uint48 depositInterval;
         uint48 vesting;

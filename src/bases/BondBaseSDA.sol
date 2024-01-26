@@ -59,6 +59,7 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
         uint256 initialPrice
     );
     event MarketClosed(uint256 indexed id);
+    event MarketPartialyClosed(uint256 indexed id);
     event Tuned(uint256 indexed id, uint256 oldControlVariable, uint256 newControlVariable);
     event DefaultsUpdated(
         uint32 defaultTuneInterval,
@@ -180,24 +181,19 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
             params_.depositInterval > params_.duration
         ) revert Auctioneer_InvalidParams();
 
-        // Convert capacity to payout token units
-        uint256 capacityInPayout = params_.capacityInQuote
-            ? params_.capacity.mulDiv(scale, params_.formattedInitialPrice)
-            : params_.capacity;
-
         // If payout is native token
         if (address(params_.payoutToken) == address(0)) {
             // Ensure capacity is equal to the value sent
-            if (capacityInPayout != msg.value) revert Auctioneer_InvalidParams();
+            if (params_.capacity != msg.value) revert Auctioneer_InvalidParams();
             // Send tokens to teller as it operates over purchase
-            bool sent = payable(address(_teller)).send(capacityInPayout);
+            bool sent = payable(address(_teller)).send(msg.value);
             require(sent, "Failed to send tokens to teller");
         } else {
             // Check balance before and after to ensure full amount received, revert if not
             // Handles edge cases like fee-on-transfer tokens (which are not supported)
             uint256 payoutBalance = params_.payoutToken.balanceOf(address(_teller));
-            params_.payoutToken.safeTransferFrom(msg.sender, address(_teller), capacityInPayout);
-            if (params_.payoutToken.balanceOf(address(_teller)) < payoutBalance + capacityInPayout)
+            params_.payoutToken.safeTransferFrom(msg.sender, address(_teller), params_.capacity);
+            if (params_.payoutToken.balanceOf(address(_teller)) < payoutBalance + params_.capacity)
                 revert Auctioneer_UnsupportedToken();
         }
 
@@ -228,7 +224,7 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
                 debtDecayInterval: debtDecayInterval,
                 tuneIntervalCapacity: tuneIntervalCapacity,
                 tuneBelowCapacity: params_.capacity - tuneIntervalCapacity,
-                lastTuneDebt: capacityInPayout.mulDiv(uint256(debtDecayInterval), uint256(params_.duration))
+                lastTuneDebt: params_.capacity.mulDiv(uint256(debtDecayInterval), uint256(params_.duration))
             });
         }
 
@@ -241,21 +237,20 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
         uint256 targetDebt;
         uint256 _maxPayout;
         {
-            targetDebt = capacityInPayout.mulDiv(uint256(debtDecayInterval), uint256(params_.duration));
+            targetDebt = params_.capacity.mulDiv(uint256(debtDecayInterval), uint256(params_.duration));
 
             // Max payout is the amount of capacity that should be utilized in a deposit
             // interval. for example, if capacity is 1,000 TOKEN, there are 10 days to conclusion,
             // and the preferred deposit interval is 1 day, max payout would be 100 TOKEN.
             // Additionally, max payout is the maximum amount that a user can receive from a single
             // purchase at that moment in time.
-            _maxPayout = capacityInPayout.mulDiv(uint256(params_.depositInterval), uint256(params_.duration));
+            _maxPayout = params_.capacity.mulDiv(uint256(params_.depositInterval), uint256(params_.duration));
         }
 
         markets[marketId] = BondMarket({
             owner: msg.sender,
             payoutToken: params_.payoutToken,
             quoteToken: params_.quoteToken,
-            capacityInQuote: params_.capacityInQuote,
             capacity: params_.capacity,
             totalDebt: targetDebt,
             minPrice: params_.formattedMinimumPrice,
@@ -401,8 +396,16 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
 
     /// @inheritdoc IBondAuctioneer
     function closeMarket(uint256 id_) external override {
-        if (msg.sender != markets[id_].owner) revert Auctioneer_OnlyMarketOwner();
-        _close(id_);
+        if (msg.sender != address(_teller)) revert Auctioneer_NotAuthorized();
+
+        // If market closed early, set conclusion to current timestamp
+        if (terms[id_].conclusion > uint48(block.timestamp)) {
+            terms[id_].conclusion = uint48(block.timestamp);
+        }
+
+        markets[id_].capacity = 0;
+
+        emit MarketClosed(id_);
     }
 
     /* ========== TELLER FUNCTIONS ========== */
@@ -439,11 +442,10 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
         // or the number of quote tokens that the market can buy
         // (if capacity in quote is true)
 
-        // If amount/payout is greater than capacity remaining, revert
-        if (market.capacityInQuote ? amount_ > market.capacity : payout > market.capacity)
-            revert Auctioneer_NotEnoughCapacity();
+        // If payout is greater than capacity remaining, revert
+        if (payout > market.capacity) revert Auctioneer_NotEnoughCapacity();
         // Capacity is decreased by the deposited or paid amount
-        market.capacity -= market.capacityInQuote ? amount_ : payout;
+        market.capacity -= payout;
 
         // Markets keep track of how many quote tokens have been
         // purchased, and how many payout tokens have been sold
@@ -452,7 +454,7 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
 
         // Circuit breaker. If max debt is breached, the market is closed
         if (term.maxDebt < market.totalDebt) {
-            _close(id_);
+            _closeMarketPartialy(id_);
         } else {
             // If market will continue, the control variable is tuned to to expend remaining capacity over remaining market duration
             _tune(id_, uint48(block.timestamp), price);
@@ -461,13 +463,12 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
 
     /* ========== INTERNAL DEPO FUNCTIONS ========== */
 
-    /// @notice          Close a market
-    /// @dev             Closing a market sets capacity to 0 and immediately stops bonding
-    function _close(uint256 id_) internal {
+    /// @notice          Stops markets bonding by setting conclusion to current timestamp
+    /// @dev             This allow to stop the market and allow to withdraw left funds back to market owner
+    function _closeMarketPartialy(uint256 id_) internal {
         terms[id_].conclusion = uint48(block.timestamp);
-        markets[id_].capacity = 0;
 
-        emit MarketClosed(id_);
+        emit MarketPartialyClosed(id_);
     }
 
     /// @notice                 Decay debt, and adjust control variable if there is an active change
@@ -576,15 +577,12 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
         uint256 timeRemaining = uint256(term.conclusion - time_);
         uint256 duration = uint256(term.conclusion - term.start);
 
-        // Standardize capacity into an payout token amount
-        uint256 capacity = market.capacityInQuote ? market.capacity.mulDiv(market.scale, price_) : market.capacity;
         // Calculate initial capacity based on remaining capacity and amount sold/purchased up to this point
-        uint256 initialCapacity = capacity +
-            (market.capacityInQuote ? market.purchased.mulDiv(market.scale, price_) : market.sold);
+        uint256 initialCapacity = market.capacity + market.sold;
 
         // Calculate timeNeutralCapacity as the capacity expected to be sold up to this point and the current capacity
         // Higher than initial capacity means the market is undersold, lower than initial capacity means the market is oversold
-        uint256 timeNeutralCapacity = initialCapacity.mulDiv(duration - timeRemaining, duration) + capacity;
+        uint256 timeNeutralCapacity = initialCapacity.mulDiv(duration - timeRemaining, duration) + market.capacity;
 
         if (
             (market.capacity < meta.tuneBelowCapacity && timeNeutralCapacity < initialCapacity) ||
@@ -595,7 +593,7 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
             //
             // i.e. market has 10 days remaining. deposit interval is 1 day. capacity
             // is 10,000 TOKEN. max payout would be 1,000 TOKEN (10,000 * 1 / 10).
-            markets[id_].maxPayout = capacity.mulDiv(uint256(meta.depositInterval), timeRemaining);
+            markets[id_].maxPayout = market.capacity.mulDiv(uint256(meta.depositInterval), timeRemaining);
 
             // Calculate ideal target debt to satisty capacity in the remaining time
             // The target debt is based on whether the market is under or oversold at this point in time
@@ -699,16 +697,10 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
 
     /// @inheritdoc IBondSDA
     function maxPayout(uint256 id_) public view override returns (uint256) {
-        // Get current price
-        uint256 price = marketPrice(id_);
-
         BondMarket memory market = markets[id_];
 
-        // Convert capacity to payout token units for comparison with max payout
-        uint256 capacity = market.capacityInQuote ? market.capacity.mulDiv(market.scale, price) : market.capacity;
-
         // Cap max payout at the remaining capacity
-        return market.maxPayout > capacity ? capacity : market.maxPayout;
+        return market.maxPayout > market.capacity ? market.capacity : market.maxPayout;
     }
 
     /// @inheritdoc IBondAuctioneer
@@ -717,7 +709,7 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
         // Maximum of the maxPayout and the remaining capacity converted to quote tokens
         BondMarket memory market = markets[id_];
         uint256 price = marketPrice(id_);
-        uint256 quoteCapacity = market.capacityInQuote ? market.capacity : market.capacity.mulDiv(price, market.scale);
+        uint256 quoteCapacity = market.capacity.mulDiv(price, market.scale);
         uint256 maxQuote = market.maxPayout.mulDiv(price, market.scale);
         uint256 amountAccepted = quoteCapacity < maxQuote ? quoteCapacity : maxQuote;
 
@@ -806,5 +798,10 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
     /// @inheritdoc IBondAuctioneer
     function currentCapacity(uint256 id_) external view override returns (uint256) {
         return markets[id_].capacity;
+    }
+
+    /// @inheritdoc IBondAuctioneer
+    function getConclusion(uint256 id_) external view override returns (uint48) {
+        return terms[id_].conclusion;
     }
 }

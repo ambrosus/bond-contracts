@@ -118,6 +118,33 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
     }
 
     /// @inheritdoc IBondTeller
+    function closeMarket(uint256 id_) external override nonReentrant {
+        IBondAuctioneer auctioneer = _aggregator.getAuctioneer(id_);
+        address owner;
+        ERC20 payoutToken;
+        (owner, payoutToken, , , ) = auctioneer.getMarketInfoForPurchase(id_);
+        uint256 capacity = auctioneer.currentCapacity(id_);
+        uint48 conclusion = auctioneer.getConclusion(id_);
+
+        // Only owner can close market before conclusion
+        if (conclusion > block.timestamp) {
+            if (msg.sender != owner) revert Teller_NotAuthorized();
+        }
+
+        // Return remaining capacity to owner
+        if (capacity != 0) {
+            if (address(payoutToken) == address(0)) {
+                bool sent = payable(owner).send(capacity);
+                require(sent, "Failed to send native tokens");
+            } else {
+                payoutToken.safeTransfer(owner, capacity);
+            }
+        }
+
+        auctioneer.closeMarket(id_);
+    }
+
+    /// @inheritdoc IBondTeller
     function getFee(address referrer_) external view returns (uint48) {
         return protocolFee + referrerFees[referrer_];
     }

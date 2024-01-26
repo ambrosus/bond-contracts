@@ -127,4 +127,7 @@ interface IBondAuctioneer {
 
     /// @notice             Returns current capacity of a market
     function currentCapacity(uint256 id_) external view returns (uint256);
+
+    /// @notice             Returns market conclusion timestamp
+    function getConclusion(uint256 id_) external view returns (uint48);
 }

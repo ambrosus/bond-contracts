@@ -10,8 +10,7 @@ interface IBondFPA is IBondAuctioneer {
         address owner; // market owner. sends payout tokens, receives quote tokens (defaults to creator)
         ERC20 payoutToken; // token to pay depositors with
         ERC20 quoteToken; // token to accept as payment
-        bool capacityInQuote; // capacity limit is in payment token (true) or in payout (false, default)
-        uint256 capacity; // capacity remaining
+        uint256 capacity; // capacity remaining in payout token
         uint256 maxPayout; // max payout tokens out in one order
         uint256 price; // fixed price of the market (see MarketParams struct)
         uint256 scale; // scaling factor for the market (see MarketParams struct)
@@ -43,24 +42,22 @@ interface IBondFPA is IBondAuctioneer {
     /// @param params_      Encoded bytes array, with the following elements
     /// @dev                    0. Payout Token (token paid out)
     /// @dev                    1. Quote Token (token to be received)
-    /// @dev                    2. Is Capacity in Quote Token?
-    /// @dev                    3. Capacity (amount in quoteDecimals or amount in payoutDecimals)
-    /// @dev                    4. Formatted price (see note above)
-    /// @dev                    5. Deposit interval (seconds). Desired frequency of bonds. Used to calculate max payout of market (maxPayout = length / depositInterval * capacity).
-    /// @dev                    6. Is fixed term ? Vesting length (seconds) : Vesting expiry (timestamp).
+    /// @dev                    2. Capacity in payout token
+    /// @dev                    3. Formatted price (see note above)
+    /// @dev                    4. Deposit interval (seconds). Desired frequency of bonds. Used to calculate max payout of market (maxPayout = length / depositInterval * capacity).
+    /// @dev                    5. Is fixed term ? Vesting length (seconds) : Vesting expiry (timestamp).
     /// @dev                        A 'vesting' param longer than 50 years is considered a timestamp for fixed expiry.
-    /// @dev                    7. Start Time of the Market (timestamp) - Allows starting a market in the future.
+    /// @dev                    6. Start Time of the Market (timestamp) - Allows starting a market in the future.
     /// @dev                        If a start time is provided, the txn must be sent prior to the start time (functions as a deadline).
     /// @dev                        If start time is not provided (i.e. 0), the market will start immediately.
-    /// @dev                    8. Market Duration (seconds) - Duration of the market in seconds.
-    /// @dev                    9. Market scaling factor adjustment, ranges from -24 to +24 within the configured market bounds.
+    /// @dev                    7. Market Duration (seconds) - Duration of the market in seconds.
+    /// @dev                    8. Market scaling factor adjustment, ranges from -24 to +24 within the configured market bounds.
     /// @dev                        Should be calculated as: (payoutDecimals - quoteDecimals) - ((payoutPriceDecimals - quotePriceDecimals) / 2)
     /// @dev                        Providing a scaling factor adjustment that doesn't follow this formula could lead to under or overflow errors in the market.
     /// @return                 ID of new bond market
     struct MarketParams {
         ERC20 payoutToken;
         ERC20 quoteToken;
-        bool capacityInQuote;
         uint256 capacity;
         uint256 formattedPrice;
         uint48 depositInterval;

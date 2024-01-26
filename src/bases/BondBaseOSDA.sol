@@ -130,7 +130,6 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
         market.owner = msg.sender;
         market.quoteToken = params_.quoteToken;
         market.payoutToken = params_.payoutToken;
-        market.capacityInQuote = params_.capacityInQuote;
         market.capacity = params_.capacity;
 
         // Check that the base discount is in bounds (cannot be 100% or greater)
@@ -167,32 +166,24 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
             params_.depositInterval > params_.duration
         ) revert Auctioneer_InvalidParams();
 
-        // Convert capacity to payout token units
-        uint256 capacityInPayout = params_.capacityInQuote
-            ? params_.capacity.mulDiv(
-                scale,
-                price.mulDivUp(uint256(ONE_HUNDRED_PERCENT - params_.baseDiscount), uint256(ONE_HUNDRED_PERCENT))
-            )
-            : params_.capacity;
-
         // If payout is native token
         if (address(params_.payoutToken) == address(0)) {
             // Ensure capacity is equal to the value sent
-            if (capacityInPayout != msg.value) revert Auctioneer_InvalidParams();
+            if (params_.capacity != msg.value) revert Auctioneer_InvalidParams();
             // Send tokens to teller as it operates over purchase
-            bool sent = payable(address(_teller)).send(capacityInPayout);
+            bool sent = payable(address(_teller)).send(msg.value);
             require(sent, "Failed to send tokens to teller");
         } else {
             // Check balance before and after to ensure full amount received, revert if not
             // Handles edge cases like fee-on-transfer tokens (which are not supported)
             uint256 payoutBalance = params_.payoutToken.balanceOf(address(_teller));
-            params_.payoutToken.safeTransferFrom(msg.sender, address(_teller), capacityInPayout);
-            if (params_.payoutToken.balanceOf(address(_teller)) < payoutBalance + capacityInPayout)
+            params_.payoutToken.safeTransferFrom(msg.sender, address(_teller), params_.capacity);
+            if (params_.payoutToken.balanceOf(address(_teller)) < payoutBalance + params_.capacity)
                 revert Auctioneer_UnsupportedToken();
         }
 
         // Calculate the maximum payout amount for this market, determined by deposit interval
-        market.maxPayout = capacityInPayout.mulDiv(uint256(params_.depositInterval), uint256(params_.duration));
+        market.maxPayout = params_.capacity.mulDiv(uint256(params_.depositInterval), uint256(params_.duration));
 
         // Check target interval discount in bounds
         if (params_.targetIntervalDiscount > ONE_HUNDRED_PERCENT) revert Auctioneer_InvalidParams();
@@ -333,8 +324,16 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
 
     /// @inheritdoc IBondAuctioneer
     function closeMarket(uint256 id_) external override {
-        if (msg.sender != markets[id_].owner) revert Auctioneer_OnlyMarketOwner();
-        _close(id_);
+        if (msg.sender != address(_teller)) revert Auctioneer_NotAuthorized();
+
+        // If market closed early, set conclusion to current timestamp
+        if (terms[id_].conclusion > uint48(block.timestamp)) {
+            terms[id_].conclusion = uint48(block.timestamp);
+        }
+
+        markets[id_].capacity = 0;
+
+        emit MarketClosed(id_);
     }
 
     /* ========== TELLER FUNCTIONS ========== */
@@ -379,29 +378,17 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
         // or the number of quote tokens that the market can buy
         // (if capacity in quote is true)
 
-        // If amount/payout is greater than capacity remaining, revert
-        if (market.capacityInQuote ? amount_ > market.capacity : payout > market.capacity)
-            revert Auctioneer_NotEnoughCapacity();
+        // If payout is greater than capacity remaining, revert
+        if (payout > market.capacity) revert Auctioneer_NotEnoughCapacity();
         unchecked {
             // Capacity is decreased by the deposited or paid amount
-            market.capacity -= market.capacityInQuote ? amount_ : payout;
+            market.capacity -= payout;
 
             // Markets keep track of how many quote tokens have been
             // purchased, and how many payout tokens have been sold
             market.purchased += amount_;
             market.sold += payout;
         }
-    }
-
-    /* ========== INTERNAL DEPO FUNCTIONS ========== */
-
-    /// @notice          Close a market
-    /// @dev             Closing a market sets capacity to 0 and immediately stops bonding
-    function _close(uint256 id_) internal {
-        terms[id_].conclusion = uint48(block.timestamp);
-        markets[id_].capacity = 0;
-
-        emit MarketClosed(id_);
     }
 
     /* ========== INTERNAL VIEW FUNCTIONS ========== */
@@ -424,7 +411,7 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
         if (price == 0) revert Auctioneer_OraclePriceZero();
 
         // Calculate initial capacity based on remaining capacity and amount sold/purchased up to this point
-        uint256 initialCapacity = market.capacity + (market.capacityInQuote ? market.purchased : market.sold);
+        uint256 initialCapacity = market.capacity + (market.sold);
 
         // Compute seconds remaining until market will conclude
         uint256 conclusion = uint256(term.conclusion);
@@ -526,17 +513,10 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
 
     /// @inheritdoc IBondOSDA
     function maxPayout(uint256 id_) public view override returns (uint256) {
-        // Get current price
-        uint256 price = marketPrice(id_);
-
         BondMarket memory market = markets[id_];
-        BondTerms memory term = terms[id_];
-
-        // Convert capacity to payout token units for comparison with max payout
-        uint256 capacity = market.capacityInQuote ? market.capacity.mulDiv(term.scale, price) : market.capacity;
 
         // Cap max payout at the remaining capacity
-        return market.maxPayout > capacity ? capacity : market.maxPayout;
+        return market.maxPayout > market.capacity ? market.capacity : market.maxPayout;
     }
 
     /// @inheritdoc IBondAuctioneer
@@ -546,7 +526,7 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
         BondMarket memory market = markets[id_];
         BondTerms memory term = terms[id_];
         uint256 price = marketPrice(id_);
-        uint256 quoteCapacity = market.capacityInQuote ? market.capacity : market.capacity.mulDiv(price, term.scale);
+        uint256 quoteCapacity = market.capacity.mulDiv(price, term.scale);
         uint256 maxQuote = market.maxPayout.mulDiv(price, term.scale);
         uint256 amountAccepted = quoteCapacity < maxQuote ? quoteCapacity : maxQuote;
 
@@ -591,5 +571,10 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
     /// @inheritdoc IBondAuctioneer
     function currentCapacity(uint256 id_) external view override returns (uint256) {
         return markets[id_].capacity;
+    }
+
+    /// @inheritdoc IBondAuctioneer
+    function getConclusion(uint256 id_) external view override returns (uint48) {
+        return terms[id_].conclusion;
     }
 }

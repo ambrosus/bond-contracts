@@ -11,8 +11,7 @@ interface IBondOSDA is IBondAuctioneer {
         address owner; // market owner. sends payout tokens, receives quote tokens (defaults to creator)
         ERC20 payoutToken; // token to pay depositors with
         ERC20 quoteToken; // token to accept as payment
-        bool capacityInQuote; // capacity limit is in payment token (true) or in payout (false, default)
-        uint256 capacity; // capacity remaining
+        uint256 capacity; // capacity remaining in payout
         uint256 maxPayout; // max payout tokens out in one order
         uint256 sold; // payout tokens out
         uint256 purchased; // quote tokens in
@@ -39,8 +38,7 @@ interface IBondOSDA is IBondAuctioneer {
     /// @dev                    3. Base discount with 3 decimals of precision, e.g. 10_000 = 10%. Sets a base discount against the oracle price before time-related decay is applied.
     /// @dev                    4. Maximum discount from current oracle price with 3 decimals of precision, sets absolute minimum price for market
     /// @dev                    5. Target interval discount with 3 decimals of precision. The discount to be achieved over a deposit interval (in addition to base discount).
-    /// @dev                    6. Is Capacity in Quote Token?
-    /// @dev                    7. Capacity (amount in the decimals of the token chosen to provided capacity in).
+    /// @dev                    7. Capacity in payout token.
     /// @dev                    8. Deposit interval (seconds). Desired frequency of bonds. Used to calculate max payout of market (maxPayout = duration / depositInterval * capacity)
     /// @dev                    9. Is fixed term ? Vesting length (seconds) : Vesting expiry (timestamp).
     /// @dev                        A 'vesting' param longer than 50 years is considered a timestamp for fixed expiry.
@@ -55,7 +53,6 @@ interface IBondOSDA is IBondAuctioneer {
         uint48 baseDiscount;
         uint48 maxDiscountFromCurrent;
         uint48 targetIntervalDiscount;
-        bool capacityInQuote;
         uint256 capacity;
         uint48 depositInterval;
         uint48 vesting;
