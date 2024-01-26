@@ -124,6 +124,12 @@ contract BondAggregator is IBondAggregator, Auth {
     }
 
     /// @inheritdoc IBondAggregator
+    function isClosing(uint256 id_) public view override returns (bool) {
+        IBondAuctioneer auctioneer = marketsToAuctioneers[id_];
+        return auctioneer.isClosing(id_);
+    }
+
+    /// @inheritdoc IBondAggregator
     function liveMarketsBetween(
         uint256 firstIndex_,
         uint256 lastIndex_
@@ -264,6 +270,24 @@ contract BondAggregator is IBondAggregator, Auth {
             }
         }
 
+        return ids;
+    }
+
+    /// @inheritdoc IBondAggregator
+    function closingMarketsBetween(uint256 firstIndex_, uint256 lastIndex_) external view returns (uint256[] memory) {
+        uint256 count;
+        for (uint256 i = firstIndex_; i < lastIndex_; ++i) {
+            if (isClosing(i)) ++count;
+        }
+
+        uint256[] memory ids = new uint256[](count);
+        count = 0;
+        for (uint256 i = firstIndex_; i < lastIndex_; ++i) {
+            if (isClosing(i)) {
+                ids[count] = i;
+                ++count;
+            }
+        }
         return ids;
     }
 

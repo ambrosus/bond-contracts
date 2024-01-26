@@ -115,6 +115,10 @@ interface IBondAuctioneer {
     /// @param id_          ID of market
     function isLive(uint256 id_) external view returns (bool);
 
+    /// @notice             Is a given market closing (market meet its conclusion, but owner did not receive unpurchased tokens yet)
+    /// @param id_          ID of market
+    function isClosing(uint256 id_) external view returns (bool);
+
     /// @notice             Returns the address of the market owner
     /// @param id_          ID of market
     function ownerOf(uint256 id_) external view returns (address);

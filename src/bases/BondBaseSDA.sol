@@ -781,6 +781,11 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
     }
 
     /// @inheritdoc IBondAuctioneer
+    function isClosing(uint256 id_) public view override returns (bool) {
+        return (markets[id_].capacity != 0 && terms[id_].conclusion < uint48(block.timestamp));
+    }
+
+    /// @inheritdoc IBondAuctioneer
     function ownerOf(uint256 id_) external view override returns (address) {
         return markets[id_].owner;
     }
