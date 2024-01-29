@@ -112,7 +112,12 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
 
             if (send != 0) {
                 rewards[msg.sender][token] = 0;
-                token.safeTransfer(to_, send);
+                if (address(token) == address(0)) {
+                    bool sent = payable(to_).send(send);
+                    require(sent, "Failed to send native tokens");
+                } else {
+                    token.safeTransfer(to_, send);
+                }
             }
         }
     }
