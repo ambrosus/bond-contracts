@@ -102,8 +102,8 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
         _aggregator = aggregator_;
         _teller = teller_;
 
-        minDepositInterval = 1 hours;
-        minMarketDuration = 1 days;
+        minDepositInterval = 1 minutes;
+        minMarketDuration = 10 minutes;
 
         allowNewMarkets = true;
     }
@@ -294,8 +294,8 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
     function setMinMarketDuration(uint48 duration_) external override requiresAuth {
         // Restricted to authorized addresses
 
-        // Require duration to be greater than minimum deposit interval and at least 1 day
-        if (duration_ < minDepositInterval || duration_ < 1 days) revert Auctioneer_InvalidParams();
+        // Require duration to be greater than minimum deposit interval and at least 10 minutes
+        if (duration_ < minDepositInterval || duration_ < 10 minutes) revert Auctioneer_InvalidParams();
 
         minMarketDuration = duration_;
     }
@@ -304,8 +304,8 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
     function setMinDepositInterval(uint48 depositInterval_) external override requiresAuth {
         // Restricted to authorized addresses
 
-        // Require min deposit interval to be less than minimum market duration and at least 1 hour
-        if (depositInterval_ > minMarketDuration || depositInterval_ < 1 hours) revert Auctioneer_InvalidParams();
+        // Require min deposit interval to be less than minimum market duration and at least 1 minute
+        if (depositInterval_ > minMarketDuration || depositInterval_ < 1 minutes) revert Auctioneer_InvalidParams();
 
         minDepositInterval = depositInterval_;
     }

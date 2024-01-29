@@ -125,8 +125,8 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
         defaultTuneInterval = 24 hours;
         defaultTuneAdjustment = 6 hours;
         minDebtDecayInterval = 3 days;
-        minDepositInterval = 1 hours;
-        minMarketDuration = 1 days;
+        minDepositInterval = 1 minutes;
+        minMarketDuration = 10 minutes;
         minDebtBuffer = 10000; // 10%
 
         allowNewMarkets = true;
