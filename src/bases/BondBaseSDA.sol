@@ -287,11 +287,12 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
         // price = control variable * debt / scale
         // therefore, control variable = price * scale / debt
         uint256 controlVariable = params_.formattedInitialPrice.mulDiv(scale, targetDebt);
+        uint48 start = params_.start == 0 ? uint48(block.timestamp) : params_.start;
         terms[marketId] = BondTerms({
             controlVariable: controlVariable,
             maxDebt: maxDebt,
             start: params_.start == 0 ? uint48(block.timestamp) : params_.start,
-            conclusion: params_.start == 0 ? uint48(block.timestamp) : params_.start + uint48(params_.duration),
+            conclusion: start + uint48(params_.duration),
             vesting: params_.vesting
         });
 
