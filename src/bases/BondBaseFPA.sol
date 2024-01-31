@@ -278,6 +278,9 @@ abstract contract BondBaseFPA is IBondFPA, Auth {
         // Calculate payout amount from fixed price
         payout = amount_.mulDiv(market.scale, market.price);
 
+        // Payout and amount must be greater than zero
+        if (payout == 0 || amount_ == 0) revert Auctioneer_AmountLessThanMinimum();
+
         // Payout must be greater than user inputted minimum
         if (payout < minAmountOut_) revert Auctioneer_AmountLessThanMinimum();
 
