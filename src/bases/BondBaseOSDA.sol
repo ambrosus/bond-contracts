@@ -363,6 +363,9 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
         // price = quote tokens : payout token (i.e. 200 QUOTE : BASE), adjusted for scaling
         payout = amount_.mulDiv(term.scale, price);
 
+        // Payout and amount must be greater than zero
+        if (payout == 0 || amount_ == 0) revert Auctioneer_AmountLessThanMinimum();
+
         // Payout must be greater than user inputted minimum
         if (payout < minAmountOut_) revert Auctioneer_AmountLessThanMinimum();
 

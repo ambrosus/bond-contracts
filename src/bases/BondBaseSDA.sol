@@ -427,6 +427,9 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
         uint256 price;
         (price, payout) = _decayAndGetPrice(id_, amount_, uint48(block.timestamp)); // Debt and the control variable decay over time
 
+        // Payout and amount must be greater than zero
+        if (payout == 0 || amount_ == 0) revert Auctioneer_AmountLessThanMinimum();
+
         // Payout must be greater than user inputted minimum
         if (payout < minAmountOut_) revert Auctioneer_AmountLessThanMinimum();
 
