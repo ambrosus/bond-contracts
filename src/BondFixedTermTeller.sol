@@ -128,7 +128,7 @@ contract BondFixedTermTeller is BondBaseTeller, IBondFixedTermTeller, ERC1155 {
         if (protocolFee > createFeeDiscount) {
             // Calculate fee amount
             uint256 feeAmount = amount_.mulDiv(protocolFee - createFeeDiscount, FEE_DECIMALS);
-            rewards[_protocol][underlying_] += feeAmount;
+            rewards[_beneficiary][underlying_] += feeAmount;
 
             // Mint new bond tokens
             _mintToken(msg.sender, tokenId, amount_ - feeAmount);

@@ -21,6 +21,10 @@ interface IBondTeller {
         uint256 minAmountOut_
     ) external payable returns (uint256, uint48);
 
+    /// @notice             Change the beneficiary of the teller
+    /// @param beneficiary_ Address of the new beneficiary
+    function setBeneficiary(address beneficiary_) external;
+
     /// @notice          Get current fee charged by the teller based on the combined protocol and referrer fee
     /// @param referrer_ Address of the referrer
     /// @return          Fee in basis points (3 decimal places)

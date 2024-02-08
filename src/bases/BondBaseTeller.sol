@@ -66,23 +66,28 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
     mapping(address => mapping(ERC20 => uint256)) public rewards;
 
     // Address the protocol receives fees at
-    address internal immutable _protocol;
+    address internal _beneficiary;
 
     // BondAggregator contract with utility functions
     IBondAggregator internal immutable _aggregator;
 
     constructor(
-        address protocol_,
+        address beneficiary_,
         IBondAggregator aggregator_,
         address guardian_,
         Authority authority_
     ) Auth(guardian_, authority_) {
-        _protocol = protocol_;
+        _beneficiary = beneficiary_;
         _aggregator = aggregator_;
 
         // Explicitly setting these values to zero to document
         protocolFee = 0;
         createFeeDiscount = 0;
+    }
+
+    /// @inheritdoc IBondTeller
+    function setBeneficiary(address beneficiary_) external override requiresAuth {
+        _beneficiary = beneficiary_;
     }
 
     /// @inheritdoc IBondTeller
@@ -188,7 +193,7 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
 
         // Allocate fees to protocol and referrer
         rewards[referrer_][quoteToken] += toReferrer;
-        rewards[_protocol][quoteToken] += toProtocol;
+        rewards[_beneficiary][quoteToken] += toProtocol;
 
         // Transfer quote tokens from sender and ensure enough payout tokens are available
         _handleTransfers(id_, amount_, toReferrer + toProtocol);
