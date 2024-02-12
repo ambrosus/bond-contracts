@@ -124,7 +124,7 @@ contract BondFixedExpiryTeller is BondBaseTeller, IBondFixedExpiryTeller {
         if (protocolFee > createFeeDiscount) {
             // Calculate fee amount
             uint256 feeAmount = amount_.mulDiv(protocolFee - createFeeDiscount, FEE_DECIMALS);
-            rewards[_beneficiary][underlying_] += feeAmount;
+            rewards[beneficiary][underlying_] += feeAmount;
 
             // Mint new bond tokens
             bondToken.mint(msg.sender, amount_ - feeAmount);
