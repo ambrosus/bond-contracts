@@ -62,9 +62,6 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
 
     uint48 public constant FEE_DECIMALS = 1e5; // one percent equals 1000.
 
-    /// @notice Fees earned by an address, by token
-    mapping(address => mapping(ERC20 => uint256)) public rewards;
-
     // Address the protocol receives fees at
     address public beneficiary;
 
@@ -106,25 +103,6 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
     function setCreateFeeDiscount(uint48 discount_) external override requiresAuth {
         if (discount_ > protocolFee) revert Teller_InvalidParams();
         createFeeDiscount = discount_;
-    }
-
-    /// @inheritdoc IBondTeller
-    function claimFees(ERC20[] memory tokens_, address to_) external override nonReentrant {
-        uint256 len = tokens_.length;
-        for (uint256 i; i < len; ++i) {
-            ERC20 token = tokens_[i];
-            uint256 send = rewards[msg.sender][token];
-
-            if (send != 0) {
-                rewards[msg.sender][token] = 0;
-                if (address(token) == address(0)) {
-                    bool sent = payable(to_).send(send);
-                    require(sent, "Failed to send native tokens");
-                } else {
-                    token.safeTransfer(to_, send);
-                }
-            }
-        }
     }
 
     /// @inheritdoc IBondTeller
@@ -191,12 +169,12 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
             payout = auctioneer.purchaseBond(id_, amountLessFee, minAmountOut_);
         }
 
-        // Allocate fees to protocol and referrer
-        rewards[referrer_][quoteToken] += toReferrer;
-        rewards[beneficiary][quoteToken] += toProtocol;
-
         // Transfer quote tokens from sender and ensure enough payout tokens are available
         _handleTransfers(id_, amount_, toReferrer + toProtocol);
+
+        // Transfer fees to beneficiary and referrer
+        _handleFeePayout(referrer_, quoteToken, toReferrer);
+        _handleFeePayout(beneficiary, quoteToken, toProtocol);
 
         // Handle payout to user (either transfer tokens if instant swap or issue bond token)
         uint48 expiry = _handlePayout(recipient_, payout, payoutToken, vesting);
@@ -251,6 +229,23 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
         ERC20 underlying_,
         uint48 vesting_
     ) internal virtual returns (uint48 expiry);
+
+    /// @notice             Handle reward payout to recipient
+    /// @param recipient_   Address to receive payout
+    /// @param token_       Token to be paid out
+    /// @param amount_      Amount of token to be paid
+    function _handleFeePayout(address recipient_, ERC20 token_, uint256 amount_) internal {
+        if (address(token_) == address(0)) {
+            bool sent = payable(recipient_).send(amount_);
+            require(sent, "Failed to send native tokens");
+        } else {
+            // Check balance before and after to ensure full amount received, revert if not
+            // Handles edge cases like fee-on-transfer tokens (which are not supported)
+            uint256 tokenBalance = token_.balanceOf(address(recipient_));
+            token_.safeTransfer(recipient_, amount_);
+            if (token_.balanceOf(address(recipient_)) < tokenBalance + amount_) revert Teller_UnsupportedToken();
+        }
+    }
 
     /// @notice             Derive name and symbol of token for market
     /// @param underlying_   Underlying token to be paid out when the Bond Token vests
