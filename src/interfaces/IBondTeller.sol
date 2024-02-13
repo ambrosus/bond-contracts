@@ -46,11 +46,6 @@ interface IBondTeller {
     /// @param fee_     Referrer fee in basis points (3 decimal places)
     function setReferrerFee(uint48 fee_) external;
 
-    /// @notice         Claim fees accrued by sender in the input tokens and sends them to the provided address
-    /// @param tokens_  Array of tokens to claim fees for
-    /// @param to_      Address to send fees to
-    function claimFees(ERC20[] memory tokens_, address to_) external;
-
     /// @notice         Return the remaining capacity of a market back to the market owner
     /// @notice         Only owner can close market earlier than the market conclusion
     /// @notice         Once market conclusion has passed, anyone can initiate payout to market owner
