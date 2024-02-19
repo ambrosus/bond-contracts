@@ -285,7 +285,7 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
         string memory monthStr = month < 10 ? string(abi.encodePacked("0", _uint2str(month))) : _uint2str(month);
         string memory dayStr = day < 10 ? string(abi.encodePacked("0", _uint2str(day))) : _uint2str(day);
 
-        string memory initialName = "amber";
+        string memory initialName = "amb";
         string memory initialSymbol = "AMB";
         if (address(underlying_) != address(0)) {
             initialName = underlying_.name();
