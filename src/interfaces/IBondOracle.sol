@@ -11,6 +11,10 @@ interface IBondOracle {
         ERC20 payoutToken_
     ) external;
 
+
+    /// @notice Returns token price in USD
+    function usdPrice(address tokenAddress) external view returns (uint256);
+
     /// @notice Returns the price as a ratio of quote tokens to base tokens for the provided market id scaled by 10^decimals
     function currentPrice(uint256 id_) external view returns (uint256);
 

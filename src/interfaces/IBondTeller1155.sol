@@ -3,7 +3,7 @@ pragma solidity >=0.8.0;
 
 import {ERC20} from "solmate/src/tokens/ERC20.sol";
 
-interface IBondFixedTermTeller {
+interface IBondTeller1155 {
     // Info for bond token
     struct TokenMetadata {
         bool active;

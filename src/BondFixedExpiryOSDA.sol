@@ -3,7 +3,6 @@ pragma solidity ^0.8.15;
 
 import {BondBaseOSDA, IBondAggregator, Authority} from "./bases/BondBaseOSDA.sol";
 import {IBondTeller} from "./interfaces/IBondTeller.sol";
-import {IBondFixedExpiryTeller} from "./interfaces/IBondFixedExpiryTeller.sol";
 
 /// @title Bond Fixed-Expiry Oracle-based Sequential Dutch Auctioneer
 /// @notice Bond Fixed-Expiry Oracle-based Sequential Dutch Auctioneer Contract
@@ -46,15 +45,7 @@ contract BondFixedExpiryOSDA is BondBaseOSDA {
         // Check that the vesting parameter is valid for a fixed-expiry market
         if (params.vesting != 0 && params.vesting < conclusion) revert Auctioneer_InvalidParams();
 
-        // Create market with provided params
-        uint256 marketId = _createMarket(params);
-
-        // Create bond token (ERC20 for fixed expiry) if not instant swap
-        if (params.vesting != 0) {
-            IBondFixedExpiryTeller(address(_teller)).deploy(params.payoutToken, params.vesting);
-        }
-
-        // Return market ID
-        return marketId;
+        // Create market and return market ID
+        return _createMarket(params);
     }
 }
