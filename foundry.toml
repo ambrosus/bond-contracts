@@ -4,7 +4,8 @@ optimizer = true     # enable or disable the solc optimizer
 optimizer_runs = 100000 # the number of optimizer runs
 solc_version = '0.8.15'
 remappings = [
-    'solmate/=lib/solmate/src/',
+    'solmate/=lib/solmate/',
     'clones/=lib/clones-with-immutable-args/src/',
-    'forge-std/=lib/forge-std/src/',
+    'forge-std/=lib/forge-std/src/'
+    '@self/=src/'
 ]
