@@ -1,16 +1,17 @@
 /// SPDX-License-Identifier: AGPL-3.0-only
-pragma solidity 0.8.15;
+pragma solidity 0.8.20;
 
-import {ERC20} from "solmate/src/tokens/ERC20.sol";
-import {Auth, Authority} from "solmate/src/auth/Auth.sol";
-import {TransferHelper} from "./lib/TransferHelper.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Auth} from "./lib/Auth.sol";
+import {IAuthority} from "./interfaces/IAuthority.sol";
 import {FullMath} from "./lib/FullMath.sol";
 import {IBondAggregator} from "./interfaces/IBondAggregator.sol";
 import {IBondAuctioneer} from "./interfaces/IBondAuctioneer.sol";
 import {IBondTeller} from "./interfaces/IBondTeller.sol";
 
 contract LimitOrders is Auth {
-    using TransferHelper for ERC20;
+    using SafeERC20 for ERC20;
     using FullMath for uint256;
 
     /* ========== EVENTS ========== */
@@ -64,7 +65,7 @@ contract LimitOrders is Auth {
 
     /* ========== CONSTRUCTOR ========== */
 
-    constructor(IBondAggregator aggregator_, Authority authority_) Auth(address(0), authority_) {
+    constructor(IBondAggregator aggregator_, IAuthority authority_) Auth(address(0), authority_) {
         aggregator = aggregator_;
         chainId = block.chainid;
         domainSeparator = computeDomainSeparator();
@@ -141,7 +142,7 @@ contract LimitOrders is Auth {
 
         // Approve teller to spend token
         IBondTeller teller = auctioneer.getTeller();
-        quoteToken.safeApprove(address(teller), amount);
+        quoteToken.forceApprove(address(teller), amount);
 
         // Execute purchase
         teller.purchase(order_.recipient, order_.referrer, order_.marketId, amount, minAmountOut);

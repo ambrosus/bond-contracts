@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-pragma solidity 0.8.15;
+pragma solidity 0.8.20;
 
-import {ERC20} from "solmate/src/tokens/ERC20.sol";
-import {Auth, Authority} from "solmate/src/auth/Auth.sol";
+
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {BondBaseTellerUpgradeable, IBondAggregator, TellerRolesUpgradeable} from "./BondBaseTeller.sol";
-import {IBondTeller1155} from "@self/interfaces/IBondTeller1155.sol";
-import {TransferHelper} from "@self/lib/TransferHelper.sol";
-import {FullMath} from "@self/lib/FullMath.sol";
-import {Teller1155Upgradeable} from "./Teller1155.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {FullMath} from "../lib/FullMath.sol";
+import {IAuthority} from "../interfaces/IAuthority.sol";
+import {IBondAggregator} from "../interfaces/IBondAggregator.sol";
+import {IBondTeller1155} from "../interfaces/IBondTeller1155.sol";
+import {TicketUpgradeable} from "../lib/TicketUpgradeable.sol";
+import {BondBaseTellerUpgradeable} from "./BondBaseTellerUpgradeable.sol";
 
 /// @title Bond Fixed Term Teller
 /// @notice Bond Fixed Term Teller Contract
@@ -26,8 +28,13 @@ import {Teller1155Upgradeable} from "./Teller1155.sol";
 ///      (rounded to the minute) as ERC1155 tokens.
 ///
 /// @author Oighty, Zeus, Potted Meat, indigo
-abstract contract BondTeller1155Upgradeable is IBondTeller1155, Teller1155Upgradeable, BondBaseTellerUpgradeable, UUPSUpgradeable {
-    using TransferHelper for ERC20;
+abstract contract BondTeller1155Upgradeable is 
+    IBondTeller1155, 
+    TicketUpgradeable, 
+    BondBaseTellerUpgradeable, 
+    UUPSUpgradeable 
+{
+    using SafeERC20 for ERC20;
     using FullMath for uint256;
 
     /* ========== EVENTS ========== */
@@ -38,35 +45,28 @@ abstract contract BondTeller1155Upgradeable is IBondTeller1155, Teller1155Upgrad
     mapping(uint256 => TokenMetadata) public tokenMetadata; // metadata for bond tokens
 
     function __BondTeller1155_init(
-        address admin_,
-        address pauser_,
-        address minter_,
-        address upgrader_,
-        address feeAdmin_,
+        address guardian_,
+        IAuthority authority_,
         address protocol_,
         IBondAggregator aggregator_
     ) internal onlyInitializing {
         __UUPSUpgradeable_init();
-        __Teller1155_init();
-        __BondBaseTeller_init(admin_, pauser_, minter_, upgrader_, feeAdmin_, protocol_, aggregator_);
+        __Ticket_init();
+        __BondBaseTeller_init(
+            guardian_,
+            authority_,
+            protocol_, 
+            aggregator_
+        );
+
     }
 
 
      function _authorizeUpgrade(address newImplementation)
         internal
-        onlyRole(UPGRADER_ROLE)
         override
+        requiresAuth
     {}
-
-
-    function pause() public onlyRole(PAUSER_ROLE) {
-        _pause();
-    }
-
-    function unpause() public onlyRole(PAUSER_ROLE) {
-        _unpause();
-    }
-
 
     /* ========== PURCHASE ========== */
 
@@ -200,7 +200,7 @@ abstract contract BondTeller1155Upgradeable is IBondTeller1155, Teller1155Upgrad
         }
 
         // Store token metadata
-        tokenMetadata[tokenId_] = TokenMetadata(true, underlying_, decimals, expiry, 0);
+        tokenMetadata[tokenId_] = TokenMetadata(true, tokenId_, underlying_, decimals, expiry, 0);
 
         emit ERC1155BondTokenCreated(tokenId_, underlying_, expiry);
     }
@@ -223,9 +223,6 @@ abstract contract BondTeller1155Upgradeable is IBondTeller1155, Teller1155Upgrad
         _burn(from_, tokenId_, amount_);
     }
 
-
-
-
     /* ========== TOKEN NAMING ========== */
 
     /// @inheritdoc IBondTeller1155
@@ -242,11 +239,4 @@ abstract contract BondTeller1155Upgradeable is IBondTeller1155, Teller1155Upgrad
         (string memory name, string memory symbol) = _getNameAndSymbol(meta.underlying, meta.expiry);
         return (name, symbol);
     }
-
-    function supportsInterface(bytes4 interfaceId)
-    public
-    view
-    override(Teller1155Upgradeable, TellerRolesUpgradeable) returns (bool) {
-    return super.supportsInterface(interfaceId);
-  }
 }

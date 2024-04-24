@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity >=0.8.0;
 
-import {ERC20} from "solmate/src/tokens/ERC20.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 interface IBondTeller1155 {
     // Info for bond token
     struct TokenMetadata {
         bool active;
+        uint256 tokenId;
         ERC20 underlying;
         uint8 decimals;
         uint48 expiry;

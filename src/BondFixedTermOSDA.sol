@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-pragma solidity ^0.8.15;
+pragma solidity 0.8.20;
 
-import {BondBaseOSDA, IBondAggregator, Authority} from "./bases/BondBaseOSDA.sol";
+import {IAuthority} from "./interfaces/IAuthority.sol";
+import {IBondAggregator} from "./interfaces/IBondAggregator.sol";
 import {IBondTeller} from "./interfaces/IBondTeller.sol";
+import {BondBaseOSDA} from "./bases/BondBaseOSDA.sol";
 
 /// @title Bond Fixed-Term Oracle-based Sequential Dutch Auctioneer
 /// @notice Bond Fixed-Term Oracle-based Sequential Dutch Auctioneer Contract
@@ -25,7 +27,7 @@ contract BondFixedTermOSDA is BondBaseOSDA {
         IBondTeller teller_,
         IBondAggregator aggregator_,
         address guardian_,
-        Authority authority_
+        IAuthority authority_
     ) BondBaseOSDA(teller_, aggregator_, guardian_, authority_) {}
 
     /* ========== MARKET FUNCTIONS ========== */

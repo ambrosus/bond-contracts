@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-pragma solidity 0.8.15;
+pragma solidity 0.8.20;
 
-import "./interfaces/IBondOracle.sol";
-import "@openzeppelin/contracts/access/AccessControl.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {Auth} from "./lib/Auth.sol";
+import {IAuthority} from "./interfaces/IAuthority.sol";
+import {IBondOracle} from "./interfaces/IBondOracle.sol";
 
-contract BondOracle is IBondOracle, AccessControl {
-    bytes32 public constant AUCTIONEER_ROLE = keccak256("AUCTIONEER_ROLE");  // can register markets
-    bytes32 public constant PRICE_ORACLE_ROLE = keccak256("PRICE_ORACLE_ROLE");  // can set prices
-
+contract BondOracle is IBondOracle, Auth {
     struct MarketTokens {ERC20 quoteToken; ERC20 payoutToken;}
 
-    type Timestamp is uint256;
     // @note This is a constant value that represents the time window in seconds that a price is considered valid
     uint256 public constant VALIDITY_WINDOW = 300;  // 5 minutes
     // ------------ Error for old price ------------
@@ -18,7 +16,7 @@ contract BondOracle is IBondOracle, AccessControl {
     // ------------  Data entry struct  ------------
     struct DataWithTimestamp {
         uint price;
-        Timestamp updatedAt;
+        uint256 updatedAt;
     }
     // ---------------------------------------------
 
@@ -27,28 +25,28 @@ contract BondOracle is IBondOracle, AccessControl {
     mapping(address => DataWithTimestamp) internal prices;  // price of token in USD
     uint8 public constant oracleDecimals = 18;
 
-    constructor(){
-        _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
-    }
+    constructor(
+        address guardian_, 
+        IAuthority authority_
+    ) Auth(guardian_, authority_) {}
 
     /// @notice Modifier to restrict old price calculations
     modifier onlyValidPrice(address tokenAddress) {
         uint updatedAt = prices[tokenAddress].updatedAt;
         uint window = block.timestamp - VALIDITY_WINDOW;
-        require(
-            updatedAt >= window, 
-            Oracle_OldPrice(tokenAddress, updatedAt, window)
-        );
+        if(updatedAt < window)
+            revert Oracle_OldPrice(tokenAddress, updatedAt, window);
         _;
     }
 
     /// @notice Set price (in USD) for smallest unit of token
-    function setPrice(address token, uint price) external onlyRole(PRICE_ORACLE_ROLE) {
+    function setPrice(address token, uint price) external requiresAuth {
         prices[token] = DataWithTimestamp(price, block.timestamp);
     }
 
     /// @notice Register a new bond market on the oracle
-    function registerMarket(uint256 id_, ERC20 quoteToken_, ERC20 payoutToken_) external onlyRole(AUCTIONEER_ROLE) {
+    function registerMarket(uint256 id_, ERC20 quoteToken_, ERC20 payoutToken_) external requiresAuth {
+        // must ba auctioneer
         marketsTokens[id_] = MarketTokens(quoteToken_, payoutToken_);
     }
 

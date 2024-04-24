@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-pragma solidity 0.8.15;
+pragma solidity 0.8.20;
 
-import {BondBaseFPA, IBondAggregator, Authority} from "./bases/BondBaseFPA.sol";
+import {IAuthority} from "./interfaces/IAuthority.sol";
+import {IBondAggregator} from "./interfaces/IBondAggregator.sol";
 import {IBondTeller} from "./interfaces/IBondTeller.sol";
+import {BondBaseFPA} from "./bases/BondBaseFPA.sol";
 
 /// @title Bond Fixed-Term Fixed Price Auctioneer
 /// @notice Bond Fixed-Term Fixed Price Auctioneer Contract
@@ -32,7 +34,7 @@ contract BondFixedTermFPA is BondBaseFPA {
         IBondTeller teller_,
         IBondAggregator aggregator_,
         address guardian_,
-        Authority authority_
+        IAuthority authority_
     ) BondBaseFPA(teller_, aggregator_, guardian_, authority_) {}
 
     /* ========== MARKET FUNCTIONS ========== */

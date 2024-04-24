@@ -1,25 +1,32 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity >=0.8.0;
 
-import {Auth, Authority} from "solmate/src/auth/Auth.sol";
+import {Auth} from "./lib/Auth.sol";
+import {IAuthority} from "./interfaces/IAuthority.sol";
 
 /// @notice Role based Authority that supports up to 256 roles.
-/// @author Solmate (https://github.com/Rari-Capital/solmate/blob/main/src/auth/authorities/RolesAuthority.sol)
+/// @author Solmate (https://github.com/transmissions11/solmate/blob/main/src/auth/authorities/RolesAuthority.sol)
 /// @author Modified from Dappsys (https://github.com/dapphub/ds-roles/blob/master/src/roles.sol)
-contract RolesAuthority is Auth, Authority {
+contract RolesAuthority is Auth, IAuthority {
+    /*//////////////////////////////////////////////////////////////
+                                 EVENTS
+    //////////////////////////////////////////////////////////////*/
 
-    /* ========== EVENTS ========== */
     event UserRoleUpdated(address indexed user, uint8 indexed role, bool enabled);
 
     event PublicCapabilityUpdated(address indexed target, bytes4 indexed functionSig, bool enabled);
 
     event RoleCapabilityUpdated(uint8 indexed role, address indexed target, bytes4 indexed functionSig, bool enabled);
 
-    /* ========== CONSTRUCTOR ========== */
+    /*//////////////////////////////////////////////////////////////
+                               CONSTRUCTOR
+    //////////////////////////////////////////////////////////////*/
 
-    constructor(address _owner, Authority _authority) Auth(_owner, _authority) {}
+    constructor(address _owner, IAuthority _authority) Auth(_owner, _authority) {}
 
-    /* ========== ROLE/USER STORAGE ========== */
+    /*//////////////////////////////////////////////////////////////
+                            ROLE/USER STORAGE
+    //////////////////////////////////////////////////////////////*/
 
     mapping(address => bytes32) public getUserRoles;
 
@@ -39,7 +46,9 @@ contract RolesAuthority is Auth, Authority {
         return (uint256(getRolesWithCapability[target][functionSig]) >> role) & 1 != 0;
     }
 
-    /* ========== AUTHORIZATION LOGIC ========== */
+    /*//////////////////////////////////////////////////////////////
+                           AUTHORIZATION LOGIC
+    //////////////////////////////////////////////////////////////*/
 
     function canCall(
         address user,
@@ -51,7 +60,9 @@ contract RolesAuthority is Auth, Authority {
             bytes32(0) != getUserRoles[user] & getRolesWithCapability[target][functionSig];
     }
 
-    /* ========== ROLE CAPABILITY CONFIGURATION LOGIC ========== */
+    /*//////////////////////////////////////////////////////////////
+                   ROLE CAPABILITY CONFIGURATION LOGIC
+    //////////////////////////////////////////////////////////////*/
 
     function setPublicCapability(
         address target,
@@ -78,7 +89,9 @@ contract RolesAuthority is Auth, Authority {
         emit RoleCapabilityUpdated(role, target, functionSig, enabled);
     }
 
-    /* ========== USER ROLE ASSIGNMENT LOGIC ========== */
+    /*//////////////////////////////////////////////////////////////
+                       USER ROLE ASSIGNMENT LOGIC
+    //////////////////////////////////////////////////////////////*/
 
     function setUserRole(
         address user,

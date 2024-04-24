@@ -1,17 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-pragma solidity 0.8.15;
+pragma solidity 0.8.20;
 
-import {ERC20} from "solmate/src/tokens/ERC20.sol";
-import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
-import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
-import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
-import {IBondTeller} from "@self/interfaces/IBondTeller.sol";
-import {IBondAggregator} from "@self/interfaces/IBondAggregator.sol";
-import {IBondAuctioneer} from "@self/interfaces/IBondAuctioneer.sol";
-
-import {TransferHelper} from "@self/lib/TransferHelper.sol";
-import {TellerRolesUpgradeable} from "./RoleManager.sol";
-import {FullMath} from "@self/lib/FullMath.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import {AuthUpgradeable} from "../lib/AuthUpgradeable.sol";
+import {IAuthority} from "../interfaces/IAuthority.sol";
+import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
+import {IBondTeller} from "../interfaces/IBondTeller.sol";
+import {IBondAggregator} from "../interfaces/IBondAggregator.sol";
+import {IBondAuctioneer} from "../interfaces/IBondAuctioneer.sol";
+import {FullMath} from "../lib/FullMath.sol";
 
 /// @title Bond Teller
 /// @notice Bond Teller Base Contract
@@ -31,8 +30,13 @@ import {FullMath} from "@self/lib/FullMath.sol";
 ///      contracts to be deployed to provide markets for users to purchase bonds from.
 ///
 /// @author Oighty, Zeus, Potted Meat, indigo
-abstract contract BondBaseTellerUpgradeable is IBondTeller, TellerRolesUpgradeable, PausableUpgradeable, ReentrancyGuardUpgradeable {
-    using TransferHelper for ERC20;
+abstract contract BondBaseTellerUpgradeable is 
+    IBondTeller, 
+    AuthUpgradeable, 
+    PausableUpgradeable, 
+    ReentrancyGuardUpgradeable 
+{
+    using SafeERC20 for ERC20;
     using FullMath for uint256;
 
     /* ========== ERRORS ========== */
@@ -72,17 +76,14 @@ abstract contract BondBaseTellerUpgradeable is IBondTeller, TellerRolesUpgradeab
     /* ========== INITIALIZER ========== */
 
     function __BondBaseTeller_init(
-        address admin_, 
-        address pauser_, 
-        address minter_, 
-        address upgrader_, 
-        address feeAdmin_,
+        address guardian_,
+        IAuthority authority_,
         address beneficiary_,
         IBondAggregator aggregator_
     ) internal onlyInitializing {
         __ReentrancyGuard_init();
         // Initialize Auth
-        __TellerRoles_init(admin_, pauser_, minter_, upgrader_, feeAdmin_);
+        __AuthUpgradeable_init(guardian_, authority_);
         beneficiary = beneficiary_;
         _aggregator = aggregator_;
         protocolFee = 0;
@@ -91,8 +92,17 @@ abstract contract BondBaseTellerUpgradeable is IBondTeller, TellerRolesUpgradeab
     
     /* ================================ */
 
+    function pause() public requiresAuth {
+        _pause();
+    }
+
+    function unpause() public requiresAuth {
+        _unpause();
+    }
+
+
     /// @inheritdoc IBondTeller
-    function setBeneficiary(address beneficiary_) external override onlyRole(OWNER_ROLE) {
+    function setBeneficiary(address beneficiary_) external override requiresAuth {
         beneficiary = beneficiary_;
     }
 
@@ -103,13 +113,13 @@ abstract contract BondBaseTellerUpgradeable is IBondTeller, TellerRolesUpgradeab
     }
 
     /// @inheritdoc IBondTeller
-    function setProtocolFee(uint48 fee_) external override onlyRole(OWNER_ROLE) {
+    function setProtocolFee(uint48 fee_) external override requiresAuth {
         if (fee_ > 5e3) revert Teller_InvalidParams();
         protocolFee = fee_;
     }
 
     /// @inheritdoc IBondTeller
-    function setCreateFeeDiscount(uint48 discount_) external override onlyRole(OWNER_ROLE) {
+    function setCreateFeeDiscount(uint48 discount_) external override requiresAuth {
         if (discount_ > protocolFee) revert Teller_InvalidParams();
         createFeeDiscount = discount_;
     }
@@ -243,7 +253,11 @@ abstract contract BondBaseTellerUpgradeable is IBondTeller, TellerRolesUpgradeab
     /// @param recipient_   Address to receive payout
     /// @param token_       Token to be paid out
     /// @param amount_      Amount of token to be paid
-    function _handleFeePayout(address recipient_, ERC20 token_, uint256 amount_) internal {
+    function _handleFeePayout(
+        address recipient_, 
+        ERC20 token_, 
+        uint256 amount_
+    ) internal {
         if (address(token_) == address(0)) {
             bool sent = payable(recipient_).send(amount_);
             require(sent, "Failed to send native tokens");

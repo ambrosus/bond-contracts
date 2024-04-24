@@ -1,15 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-pragma solidity 0.8.15;
+pragma solidity 0.8.20;
 
-import {ERC20} from "solmate/src/tokens/ERC20.sol";
-import {ReentrancyGuard} from "solmate/src/utils/ReentrancyGuard.sol";
-import {Auth, Authority} from "solmate/src/auth/Auth.sol";
-
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {IAuthority} from "../interfaces/IAuthority.sol";
 import {IBondTeller} from "../interfaces/IBondTeller.sol";
 import {IBondAggregator} from "../interfaces/IBondAggregator.sol";
 import {IBondAuctioneer} from "../interfaces/IBondAuctioneer.sol";
-
-import {TransferHelper} from "../lib/TransferHelper.sol";
+import {Auth} from "../lib/Auth.sol";
 import {FullMath} from "../lib/FullMath.sol";
 
 /// @title Bond Teller
@@ -31,7 +30,7 @@ import {FullMath} from "../lib/FullMath.sol";
 ///
 /// @author Oighty, Zeus, Potted Meat, indigo
 abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
-    using TransferHelper for ERC20;
+    using SafeERC20 for ERC20;
     using FullMath for uint256;
 
     /* ========== ERRORS ========== */
@@ -72,7 +71,7 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
         address beneficiary_,
         IBondAggregator aggregator_,
         address guardian_,
-        Authority authority_
+        IAuthority authority_
     ) Auth(guardian_, authority_) {
         beneficiary = beneficiary_;
         _aggregator = aggregator_;

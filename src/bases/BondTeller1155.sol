@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-pragma solidity 0.8.15;
+pragma solidity 0.8.20;
 
-import {ERC20} from "solmate/src/tokens/ERC20.sol";
-
-import {BondBaseTeller, IBondAggregator, Authority} from "./BondBaseTeller.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {BondBaseTeller} from "./BondBaseTeller.sol";
+import {IBondAggregator} from "../interfaces/IBondAggregator.sol";
+import {IAuthority} from "../interfaces/IAuthority.sol";
 import {IBondTeller1155} from "../interfaces/IBondTeller1155.sol";
-
-import {TransferHelper} from "../lib/TransferHelper.sol";
 import {FullMath} from "../lib/FullMath.sol";
 import {ERC1155} from "../lib/ERC1155.sol";
 
@@ -27,7 +27,7 @@ import {ERC1155} from "../lib/ERC1155.sol";
 ///
 /// @author Oighty, Zeus, Potted Meat, indigo
 abstract contract BondTeller1155 is BondBaseTeller, IBondTeller1155, ERC1155 {
-    using TransferHelper for ERC20;
+    using SafeERC20 for ERC20;
     using FullMath for uint256;
 
     /* ========== EVENTS ========== */
@@ -42,7 +42,7 @@ abstract contract BondTeller1155 is BondBaseTeller, IBondTeller1155, ERC1155 {
         address protocol_,
         IBondAggregator aggregator_,
         address guardian_,
-        Authority authority_
+        IAuthority authority_
     ) BondBaseTeller(protocol_, aggregator_, guardian_, authority_) {}
 
     /* ========== PURCHASE ========== */
@@ -177,7 +177,7 @@ abstract contract BondTeller1155 is BondBaseTeller, IBondTeller1155, ERC1155 {
         }
 
         // Store token metadata
-        tokenMetadata[tokenId_] = TokenMetadata(true, underlying_, decimals, expiry, 0);
+        tokenMetadata[tokenId_] = TokenMetadata(true, tokenId_, underlying_, decimals, expiry, 0);
 
         emit ERC1155BondTokenCreated(tokenId_, underlying_, expiry);
     }
