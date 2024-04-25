@@ -67,7 +67,7 @@ abstract contract BondBaseFPA is IBondFPA, BondBaseAuctioneer {
 
     constructor(
         IBondTeller teller_,
-        IBondAggregator aggregator_
+        IBondAggregator aggregator_,
         address guardian_,
         IAuthority authority_
     ) BondBaseAuctioneer(teller_, aggregator_, guardian_, authority_) {

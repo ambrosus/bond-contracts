@@ -56,7 +56,7 @@ abstract contract BondTeller1155Upgradeable is
             protocol_, 
             aggregator_,
             guardian_,
-            authority_,
+            authority_
         );
 
     }

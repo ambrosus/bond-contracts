@@ -73,9 +73,9 @@ abstract contract BondBaseOSDA is IBondOSDA, BondBaseOracleAuctioneer {
 
     constructor(
         IBondTeller teller_,
-        IBondAggregator aggregator_
+        IBondAggregator aggregator_,
         address guardian_,
-        IAuthority authority_,
+        IAuthority authority_
     ) BondBaseOracleAuctioneer( teller_, aggregator_,guardian_, authority_){
         minDepositInterval = 1 minutes;
         minMarketDuration = 10 minutes;
