@@ -135,7 +135,7 @@ abstract contract BondBaseOFDA is IBondOFDA, BondBaseOracleAuctioneer {
             // Ensure capacity is equal to the value sent
             if (params_.capacity != msg.value) revert Auctioneer_InvalidParams();
             // Send tokens to teller as it operates over purchase
-            bool sent = payable(address(_teller)).send(msg.value);
+            (bool sent,) = payable(address(_teller)).call{value: msg.value}("");
             require(sent, "Failed to send tokens to teller");
         } else {
             // Check balance before and after to ensure full amount received, revert if not

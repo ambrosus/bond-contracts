@@ -121,7 +121,7 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
         // Return remaining capacity to owner
         if (capacity != 0) {
             if (address(payoutToken) == address(0)) {
-                bool sent = payable(owner).send(capacity);
+                (bool sent,) = payable(address(owner)).call{value: capacity}("");
                 require(sent, "Failed to send native tokens");
             } else {
                 payoutToken.safeTransfer(owner, capacity);
@@ -195,8 +195,7 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
         // otherwise, transfer quoteToken from msg.sender to this contract
         if (address(quoteToken) == address(0)) {
             if (msg.value != amount_) revert Teller_InvalidParams();
-
-            bool sent = payable(owner).send(amountLessFee);
+            (bool sent,) = payable(address(owner)).call{value: amountLessFee}("");
             require(sent, "Failed to send native tokens");
         } else {
             // Have to transfer to teller first since fee is in quote token
@@ -235,7 +234,7 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
     /// @param amount_      Amount of token to be paid
     function _handleFeePayout(address recipient_, ERC20 token_, uint256 amount_) internal {
         if (address(token_) == address(0)) {
-            bool sent = payable(recipient_).send(amount_);
+            (bool sent,) = payable(address(recipient_)).call{value: amount_}("");
             require(sent, "Failed to send native tokens");
         } else {
             // Check balance before and after to ensure full amount received, revert if not

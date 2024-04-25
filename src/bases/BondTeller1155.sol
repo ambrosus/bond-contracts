@@ -123,7 +123,7 @@ abstract contract BondTeller1155 is BondBaseTeller, IBondTeller1155, ERC1155 {
 
         // If payout token is native, handle it differently
         if (address(meta.underlying) == address(0)) {
-            bool sent = payable(msg.sender).send(amount_);
+            (bool sent,) = payable(address(msg.sender)).call{value: amount_}("");
             require(sent, "Failed to send native tokens");
         } else {
             meta.underlying.safeTransfer(msg.sender, amount_);

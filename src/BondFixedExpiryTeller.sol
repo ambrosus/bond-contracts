@@ -103,7 +103,7 @@ contract BondFixedExpiryTeller is BondTeller1155Upgradeable {
         } else {
             // If no expiry, then transfer payout directly to user
             if (address(payoutToken_) == address(0)) {
-                bool sent = payable(recipient_).send(payout_);
+                (bool sent,) = payable(address(recipient_)).call{value: payout_}("");
                 require(sent, "Failed to send native tokens");
             } else {
                 payoutToken_.safeTransfer(recipient_, payout_);
