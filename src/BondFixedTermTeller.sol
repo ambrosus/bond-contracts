@@ -30,8 +30,23 @@ contract BondFixedTermTeller is BondTeller1155Upgradeable {
     using SafeERC20 for ERC20;
 
     /* ========== CONSTRUCTOR ========== */
+    /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
+    }
+
+    function initialize(
+        address protocol_,
+        IBondAggregator aggregator_,
+        address guardian_,
+        IAuthority authority_
+    ) public initializer {
+        __BondFixedTermTeller_init(
+            protocol_,
+            aggregator_,
+            guardian_,
+            authority_
+        );
     }
 
     function __BondFixedTermTeller_init(
@@ -39,7 +54,7 @@ contract BondFixedTermTeller is BondTeller1155Upgradeable {
         IBondAggregator aggregator_,
         address guardian_,
         IAuthority authority_
-    ) public initializer {
+    ) internal onlyInitializing {
         __BondTeller1155_init(
             protocol_, 
             aggregator_,
