@@ -35,16 +35,16 @@ contract BondFixedTermTeller is BondTeller1155Upgradeable {
     }
 
     function __BondFixedTermTeller_init(
+        address protocol_,
+        IBondAggregator aggregator_,
         address guardian_,
         IAuthority authority_,
-        address protocol_,
-        IBondAggregator aggregator_
     ) public initializer {
         __BondTeller1155_init(
-            guardian_, 
-            authority_, 
             protocol_, 
-            aggregator_
+            aggregator_,
+            guardian_, 
+            authority_
         );
     }
 

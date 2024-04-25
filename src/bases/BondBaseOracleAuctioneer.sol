@@ -2,6 +2,7 @@
 pragma solidity 0.8.20;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {IAuthority} from "../interfaces/IAuthority.sol";
 import {IBondAggregator} from "../interfaces/IBondAggregator.sol";
 import {IBondOracle} from "../interfaces/IBondOracle.sol";
 import {IBondTeller} from "../interfaces/IBondTeller.sol";
@@ -34,7 +35,7 @@ abstract contract BondBaseOracleAuctioneer is BondBaseAuctioneer {
     IBondTeller teller_, 
     IBondAggregator aggregator_,
     address guardian_,
-    Authority authority_
+    IAuthority authority_
   ) BondBaseAuctioneer(teller_, aggregator_, guardian_, authority_) 
   {}
 

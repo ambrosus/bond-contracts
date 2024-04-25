@@ -45,18 +45,18 @@ abstract contract BondTeller1155Upgradeable is
     mapping(uint256 => TokenMetadata) public tokenMetadata; // metadata for bond tokens
 
     function __BondTeller1155_init(
-        address guardian_,
-        IAuthority authority_,
         address protocol_,
-        IBondAggregator aggregator_
+        IBondAggregator aggregator_,
+        address guardian_,
+        IAuthority authority_
     ) internal onlyInitializing {
         __UUPSUpgradeable_init();
         __Ticket_init();
         __BondBaseTeller_init(
+            protocol_, 
+            aggregator_,
             guardian_,
             authority_,
-            protocol_, 
-            aggregator_
         );
 
     }

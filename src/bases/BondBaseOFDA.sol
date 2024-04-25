@@ -4,12 +4,13 @@ pragma solidity 0.8.20;
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {FullMath} from "../lib/FullMath.sol";
+import {IAuthority} from "../interfaces/IAuthority.sol";
 import {IBondAuctioneer} from "../interfaces/IBondAuctioneer.sol";
 import {IBondOFDA} from "../interfaces/IBondOFDA.sol";
 import {IBondTeller} from "../interfaces/IBondTeller.sol";
 import {IBondAggregator} from "../interfaces/IBondAggregator.sol";
 import {IBondOracle} from "../interfaces/IBondOracle.sol";
-import {BondBaseOracleAuctioneer} from "./BondBaseOracleAuctioneer.sol";
+import {BondBaseOracleAuctioneer, BondBaseAuctioneer} from "./BondBaseOracleAuctioneer.sol";
 
 
 /// @title Bond Oracle-based Fixed Discount Auctioneer
@@ -64,8 +65,9 @@ abstract contract BondBaseOFDA is IBondOFDA, BondBaseOracleAuctioneer {
     constructor(
         IBondTeller teller_,
         IBondAggregator aggregator_,
-        address owner_
-    ) BondBaseOracleAuctioneer(teller_, aggregator_, owner_) {
+        address guardian_,
+        IAuthority authority_
+    ) BondBaseOracleAuctioneer(teller_, aggregator_, guardian_, authority_) {
         minDepositInterval = 1 minutes;
         minMarketDuration = 10 minutes;
     }
@@ -173,7 +175,7 @@ abstract contract BondBaseOFDA is IBondOFDA, BondBaseOracleAuctioneer {
     }
 
     /// @inheritdoc IBondOFDA
-    function setMinMarketDuration(uint48 duration_) external override onlyRole(OWNER_ROLE) {
+    function setMinMarketDuration(uint48 duration_) external override requiresAuth {
         // Restricted to authorized addresses
 
         // Require duration to be greater than minimum deposit interval and at least 10 minutes
@@ -183,7 +185,7 @@ abstract contract BondBaseOFDA is IBondOFDA, BondBaseOracleAuctioneer {
     }
 
     /// @inheritdoc IBondOFDA
-    function setMinDepositInterval(uint48 depositInterval_) external override onlyRole(OWNER_ROLE) {
+    function setMinDepositInterval(uint48 depositInterval_) external override requiresAuth {
         // Restricted to authorized addresses
 
         // Require min deposit interval to be less than minimum market duration and at least 1 minute
@@ -196,10 +198,10 @@ abstract contract BondBaseOFDA is IBondOFDA, BondBaseOracleAuctioneer {
     function setIntervals(uint256 id_, uint32[3] calldata intervals_) external override onlyMarketOwner(id_) {}
 
     // Unused, but required by interface
-    function setDefaults(uint32[6] memory defaults_) external override onlyRole(OWNER_ROLE) {}
+    function setDefaults(uint32[6] memory defaults_) external override requiresAuth {}
 
     /// @inheritdoc IBondAuctioneer
-    function setAllowNewMarkets(bool status_) external override onlyRole(OWNER_ROLE) {
+    function setAllowNewMarkets(bool status_) external override(IBondAuctioneer, BondBaseAuctioneer) requiresAuth {
         _setAllowNewMarkets(status_);
     }
 

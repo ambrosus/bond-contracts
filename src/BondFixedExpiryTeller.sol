@@ -34,16 +34,16 @@ contract BondFixedExpiryTeller is BondTeller1155Upgradeable {
     }
 
     function __BondFixedExpiryTeller_init(
-        address guardian_,
-        IAuthority authority_,
         address protocol_,
-        IBondAggregator aggregator_
+        IBondAggregator aggregator_,
+        address guardian_,
+        IAuthority authority_
     ) public initializer {
         __BondTeller1155_init(
-            guardian_, 
-            authority_, 
             protocol_, 
-            aggregator_
+            aggregator_,
+            guardian_, 
+            authority_
         );
     }
     /* ========== PURCHASE ========== */

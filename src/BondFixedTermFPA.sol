@@ -35,7 +35,7 @@ contract BondFixedTermFPA is BondBaseFPA {
         IBondAggregator aggregator_,
         address guardian_,
         IAuthority authority_
-    ) BondBaseFPA(teller_, aggregator_, guardian_, authority_) {}
+    ) BondBaseFPA(teller_, aggregator_,guardian_, authority_) {}
 
     /* ========== MARKET FUNCTIONS ========== */
     /// @inheritdoc BondBaseFPA

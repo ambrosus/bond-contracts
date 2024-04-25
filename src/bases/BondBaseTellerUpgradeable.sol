@@ -76,10 +76,10 @@ abstract contract BondBaseTellerUpgradeable is
     /* ========== INITIALIZER ========== */
 
     function __BondBaseTeller_init(
-        address guardian_,
-        IAuthority authority_,
         address beneficiary_,
-        IBondAggregator aggregator_
+        IBondAggregator aggregator_,
+        address guardian_,
+        IAuthority authority_
     ) internal onlyInitializing {
         __ReentrancyGuard_init();
         // Initialize Auth

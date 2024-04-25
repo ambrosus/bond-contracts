@@ -4,6 +4,7 @@ pragma solidity 0.8.20;
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {FullMath} from "../lib/FullMath.sol";
+import {IAuthority} from "../interfaces/IAuthority.sol";
 import {IBondAuctioneer} from "../interfaces/IBondAuctioneer.sol";
 import {IBondSDA} from "../interfaces/IBondSDA.sol";
 import {IBondTeller} from "../interfaces/IBondTeller.sol";
@@ -91,8 +92,9 @@ abstract contract BondBaseSDA is IBondSDA, BondBaseAuctioneer {
     constructor(
         IBondTeller teller_,
         IBondAggregator aggregator_,
-        address owner_
-    ) BondBaseAuctioneer(teller_, aggregator_, owner_) {
+        address guardian_,
+        IAuthority authority_
+    ) BondBaseAuctioneer( teller_, aggregator_,guardian_, authority_) {
         defaultTuneInterval = 3 minutes;
         defaultTuneAdjustment = 1 minutes;
         minDebtDecayInterval = 5 minutes;
@@ -325,7 +327,7 @@ abstract contract BondBaseSDA is IBondSDA, BondBaseAuctioneer {
     }
 
     /// @inheritdoc IBondAuctioneer
-    function setDefaults(uint32[6] memory defaults_) external override onlyRole(OWNER_ROLE) {
+    function setDefaults(uint32[6] memory defaults_) external override requiresAuth {
         // Restricted to authorized addresses
 
         // Validate inputs
@@ -360,7 +362,7 @@ abstract contract BondBaseSDA is IBondSDA, BondBaseAuctioneer {
     }
 
     /// @inheritdoc IBondAuctioneer
-    function setAllowNewMarkets(bool status_) external override onlyRole(OWNER_ROLE) {
+    function setAllowNewMarkets(bool status_) external override(IBondAuctioneer, BondBaseAuctioneer) requiresAuth {
         _setAllowNewMarkets(status_);
     }
 

@@ -84,8 +84,7 @@ abstract contract BondBaseAuctioneer is IBondAuctioneer, Auth, Pausable, Reentra
         if (
           address(msg.sender) != address(_teller) ||
           address(msg.sender) == address(0) || 
-          address(msg.sender).code.length == 0 ||
-          !supportsInterface(msg.sender, type(IBondTeller).interfaceId)
+          address(msg.sender).code.length == 0
         ) revert Auctioneer_NotAuthorized();
         _;
     }
@@ -113,7 +112,7 @@ abstract contract BondBaseAuctioneer is IBondAuctioneer, Auth, Pausable, Reentra
     }
 
     /// @inheritdoc IBondAuctioneer
-    function setAllowNewMarkets(bool status_) external override {
+    function setAllowNewMarkets(bool status_) external virtual override {
         _setAllowNewMarkets(status_);
     }
 }
