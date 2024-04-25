@@ -24,20 +24,21 @@ abstract contract TicketUpgradeable is
     __ERC1155Supply_init();
   }
 
-  function _update(
-    address from, 
-    address to, 
-    uint256[] memory ids, 
-    uint256[] memory values
+  function _beforeTokenTransfer(
+    address operator,
+    address from,
+    address to,
+    uint256[] memory ids,
+    uint256[] memory amounts,
+    bytes memory data
   ) 
-    internal 
-    virtual 
-    override(
-      ERC1155Upgradeable, 
-      ERC1155PausableUpgradeable, 
-      ERC1155SupplyUpgradeable
-    ) 
+  internal 
+  override (
+    ERC1155Upgradeable, 
+    ERC1155PausableUpgradeable, 
+    ERC1155SupplyUpgradeable
+  )
   {
-    super._update(from, to, ids, values);
+    super._beforeTokenTransfer(operator, from, to, ids, amounts, data);
   }
 }
