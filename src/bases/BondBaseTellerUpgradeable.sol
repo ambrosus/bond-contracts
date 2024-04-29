@@ -73,6 +73,8 @@ abstract contract BondBaseTellerUpgradeable is
     // BondAggregator contract with utility functions
     IBondAggregator internal _aggregator;
 
+    uint256[30] private __gap;
+
     /* ========== INITIALIZER ========== */
 
     function __BondBaseTeller_init(
