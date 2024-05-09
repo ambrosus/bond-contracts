@@ -160,14 +160,13 @@ abstract contract BondBaseTellerUpgradeable is
 
     /* ========== USER FUNCTIONS ========== */
 
-    /// @inheritdoc IBondTeller
-    function purchase(
+    function _purchase(
         address recipient_,
         address referrer_,
         uint256 id_,
         uint256 amount_,
         uint256 minAmountOut_
-    ) external payable virtual nonReentrant returns (uint256, uint48) {
+    ) internal returns (uint256, uint48) {
         ERC20 payoutToken;
         ERC20 quoteToken;
         uint48 vesting;
@@ -203,6 +202,17 @@ abstract contract BondBaseTellerUpgradeable is
         emit Bonded(id_, referrer_, amount_, payout);
 
         return (payout, expiry);
+    }
+
+    /// @inheritdoc IBondTeller
+    function purchase(
+        address recipient_,
+        address referrer_,
+        uint256 id_,
+        uint256 amount_,
+        uint256 minAmountOut_
+    ) external payable virtual nonReentrant returns (uint256, uint48) {
+        return _purchase(recipient_, referrer_, id_, amount_, minAmountOut_);
     }
 
     /// @notice     Handles transfer of funds from user

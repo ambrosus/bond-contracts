@@ -8,6 +8,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {FullMath} from "../lib/FullMath.sol";
 import {IAuthority} from "../interfaces/IAuthority.sol";
 import {IBondAggregator} from "../interfaces/IBondAggregator.sol";
+import {IBondAuctioneer} from "../interfaces/IBondAuctioneer.sol";
 import {IBondTeller1155} from "../interfaces/IBondTeller1155.sol";
 import {TicketUpgradeable} from "../lib/TicketUpgradeable.sol";
 import {BondBaseTellerUpgradeable} from "./BondBaseTellerUpgradeable.sol";
@@ -43,6 +44,7 @@ abstract contract BondTeller1155Upgradeable is
     /* ========== STATE VARIABLES ========== */
 
     mapping(uint256 => TokenMetadata) public tokenMetadata; // metadata for bond tokens
+    mapping(uint256 => uint256) public tonkenIdToMarketId; // total supply of bond tokens
 
     function __BondTeller1155_init(
         address protocol_,
@@ -82,6 +84,26 @@ abstract contract BondTeller1155Upgradeable is
         ERC20 payoutToken_,
         uint48 vesting_
     ) internal virtual override returns (uint48 expiry);
+
+    function purchase(
+        address recipient_,
+        address referrer_,
+        uint256 id_,
+        uint256 amount_,
+        uint256 minAmountOut_
+    ) external payable virtual override nonReentrant returns (uint256, uint48) {
+        ERC20 payoutToken;
+        uint256 payout;
+        uint48 expiry;
+        {
+            IBondAuctioneer auctioneer = _aggregator.getAuctioneer(id_);
+            (, payoutToken,,,) = auctioneer.getMarketInfoForPurchase(id_);
+        }
+        (payout, expiry) = _purchase(recipient_, referrer_, id_, amount_, minAmountOut_);
+        uint tokenId = getTokenId(payoutToken, expiry);
+        tonkenIdToMarketId[tokenId] = id_;
+        return (payout, expiry);
+    }
 
     /* ========== DEPOSIT/MINT ========== */
 
