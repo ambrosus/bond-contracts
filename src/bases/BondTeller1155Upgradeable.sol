@@ -45,6 +45,8 @@ abstract contract BondTeller1155Upgradeable is
 
     mapping(uint256 => TokenMetadata) public tokenMetadata; // metadata for bond tokens
     mapping(uint256 => uint256) public tonkenIdToMarketId; // total supply of bond tokens
+    
+    uint256[29] private __gap;
 
     function __BondTeller1155_init(
         address protocol_,
@@ -134,6 +136,7 @@ abstract contract BondTeller1155Upgradeable is
 
         // If fee is greater than the create discount, then calculate the fee and store it
         // Otherwise, fee is zero.
+        uint48 protocolFee = discountedProtocolFee(tx.origin);
         if (protocolFee > createFeeDiscount) {
             // Calculate fee amount
             uint256 feeAmount = amount_.mulDiv(protocolFee - createFeeDiscount, FEE_DECIMALS);

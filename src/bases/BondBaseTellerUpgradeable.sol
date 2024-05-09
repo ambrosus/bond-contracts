@@ -10,6 +10,7 @@ import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/
 import {IBondTeller} from "../interfaces/IBondTeller.sol";
 import {IBondAggregator} from "../interfaces/IBondAggregator.sol";
 import {IBondAuctioneer} from "../interfaces/IBondAuctioneer.sol";
+import {IDiscountFeeder} from "../interfaces/IDiscountFeeder.sol";
 import {FullMath} from "../lib/FullMath.sol";
 
 /// @title Bond Teller
@@ -73,7 +74,11 @@ abstract contract BondBaseTellerUpgradeable is
     // BondAggregator contract with utility functions
     IBondAggregator internal _aggregator;
 
-    uint256[30] private __gap;
+    IDiscountFeeder public feeDiscountFeeder;
+    
+    ERC20 private stakingToken;
+
+    uint256[28] private __gap;
 
     /* ========== INITIALIZER ========== */
 
@@ -90,6 +95,8 @@ abstract contract BondBaseTellerUpgradeable is
         _aggregator = aggregator_;
         protocolFee = 0;
         createFeeDiscount = 0;
+        feeDiscountFeeder = IDiscountFeeder(address(0));
+        stakingToken = ERC20(address(0));
      }
     
     /* ================================ */
@@ -102,6 +109,23 @@ abstract contract BondBaseTellerUpgradeable is
         _unpause();
     }
 
+    function setFeeDiscountFeeder(IDiscountFeeder feeder_, ERC20 stakingToken_) external requiresAuth {
+        feeDiscountFeeder = feeder_;
+        stakingToken = stakingToken_;
+    }
+
+    function discountedProtocolFee(address staker_) internal view returns (uint48) {
+        if (
+            address(feeDiscountFeeder) == address(0) || 
+            address(stakingToken) == address(0)
+        )
+            return protocolFee;
+        
+        uint256 baseFee = uint256(protocolFee);
+        uint8 feedDecimals = feeDiscountFeeder.decimals();
+        uint256 discount = feeDiscountFeeder.getDiscount(staker_, stakingToken);
+        return uint48(baseFee.mulDiv(discount, 10 ** feedDecimals));
+    }
 
     /// @inheritdoc IBondTeller
     function setBeneficiary(address beneficiary_) external override requiresAuth {
@@ -155,6 +179,7 @@ abstract contract BondBaseTellerUpgradeable is
 
     /// @inheritdoc IBondTeller
     function getFee(address referrer_) external view returns (uint48) {
+        uint48 protocolFee = discountedProtocolFee(tx.origin);
         return protocolFee + referrerFees[referrer_];
     }
 
@@ -177,7 +202,7 @@ abstract contract BondBaseTellerUpgradeable is
         // 2. Calculate protocol fee as the total expected fee amount minus the referrer fee
         //    to avoid issues with rounding from separate fee calculations
         uint256 toReferrer = amount_.mulDiv(referrerFees[referrer_], FEE_DECIMALS);
-        uint256 toProtocol = amount_.mulDiv(protocolFee + referrerFees[referrer_], FEE_DECIMALS) - toReferrer;
+        uint256 toProtocol = amount_.mulDiv(this.getFee(referrer_), FEE_DECIMALS) - toReferrer;
 
         {
             IBondAuctioneer auctioneer = _aggregator.getAuctioneer(id_);
