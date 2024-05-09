@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 pragma solidity 0.8.20;
 
+
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {BondBaseTeller} from "./BondBaseTeller.sol";
-import {IBondAggregator} from "../interfaces/IBondAggregator.sol";
-import {IAuthority} from "../interfaces/IAuthority.sol";
-import {IBondTeller1155} from "../interfaces/IBondTeller1155.sol";
 import {FullMath} from "../lib/FullMath.sol";
-import {ERC1155} from "../lib/ERC1155.sol";
+import {IAuthority} from "../interfaces/IAuthority.sol";
+import {IBondAggregator} from "../interfaces/IBondAggregator.sol";
+import {IBondAuctioneer} from "../interfaces/IBondAuctioneer.sol";
+import {IBondTeller1155} from "../interfaces/IBondTeller1155.sol";
+import {TicketUpgradeable} from "../lib/TicketUpgradeable.sol";
+import {BondBaseTellerUpgradeable} from "./BondBaseTellerUpgradeable.sol";
 
 /// @title Bond Fixed Term Teller
 /// @notice Bond Fixed Term Teller Contract
@@ -26,7 +29,12 @@ import {ERC1155} from "../lib/ERC1155.sol";
 ///      (rounded to the minute) as ERC1155 tokens.
 ///
 /// @author Oighty, Zeus, Potted Meat, indigo
-abstract contract BondTeller1155 is BondBaseTeller, IBondTeller1155, ERC1155 {
+abstract contract BondTeller1155Upgradeable is 
+    IBondTeller1155, 
+    TicketUpgradeable, 
+    BondBaseTellerUpgradeable, 
+    UUPSUpgradeable 
+{
     using SafeERC20 for ERC20;
     using FullMath for uint256;
 
@@ -36,14 +44,31 @@ abstract contract BondTeller1155 is BondBaseTeller, IBondTeller1155, ERC1155 {
     /* ========== STATE VARIABLES ========== */
 
     mapping(uint256 => TokenMetadata) public tokenMetadata; // metadata for bond tokens
+    mapping(uint256 => uint256) public tonkenIdToMarketId; // total supply of bond tokens
 
-    /* ========== CONSTRUCTOR ========== */
-    constructor(
+    function __BondTeller1155_init(
         address protocol_,
         IBondAggregator aggregator_,
         address guardian_,
         IAuthority authority_
-    ) BondBaseTeller(protocol_, aggregator_, guardian_, authority_) {}
+    ) internal onlyInitializing {
+        __UUPSUpgradeable_init();
+        __Ticket_init();
+        __BondBaseTeller_init(
+            protocol_, 
+            aggregator_,
+            guardian_,
+            authority_
+        );
+
+    }
+
+
+     function _authorizeUpgrade(address newImplementation)
+        internal
+        override
+        requiresAuth
+    {}
 
     /* ========== PURCHASE ========== */
 
@@ -59,6 +84,26 @@ abstract contract BondTeller1155 is BondBaseTeller, IBondTeller1155, ERC1155 {
         ERC20 payoutToken_,
         uint48 vesting_
     ) internal virtual override returns (uint48 expiry);
+
+    function purchase(
+        address recipient_,
+        address referrer_,
+        uint256 id_,
+        uint256 amount_,
+        uint256 minAmountOut_
+    ) external payable virtual override nonReentrant returns (uint256, uint48) {
+        ERC20 payoutToken;
+        uint256 payout;
+        uint48 expiry;
+        {
+            IBondAuctioneer auctioneer = _aggregator.getAuctioneer(id_);
+            (, payoutToken,,,) = auctioneer.getMarketInfoForPurchase(id_);
+        }
+        (payout, expiry) = _purchase(recipient_, referrer_, id_, amount_, minAmountOut_);
+        uint tokenId = getTokenId(payoutToken, expiry);
+        tonkenIdToMarketId[tokenId] = id_;
+        return (payout, expiry);
+    }
 
     /* ========== DEPOSIT/MINT ========== */
 
@@ -108,7 +153,7 @@ abstract contract BondTeller1155 is BondBaseTeller, IBondTeller1155, ERC1155 {
 
     /* ========== REDEEM ========== */
 
-    function _redeem(uint256 tokenId_, uint256 amount_) internal {
+    function _redeem(uint256 tokenId_, uint256 amount_) internal whenNotPaused {
         // Check that the tokenId is active
         if (!tokenMetadata[tokenId_].active) revert Teller_InvalidParams();
 
@@ -147,7 +192,7 @@ abstract contract BondTeller1155 is BondBaseTeller, IBondTeller1155, ERC1155 {
     /* ========== TOKENIZATION ========== */
 
     /// @inheritdoc IBondTeller1155
-    function deploy(ERC20 underlying_, uint48 expiry_) external override nonReentrant returns (uint256) {
+    function deploy(ERC20 underlying_, uint48 expiry_) external override nonReentrant whenNotPaused returns (uint256) {
         uint256 tokenId = getTokenId(underlying_, expiry_);
         // Only creates token if it does not exist
         if (!tokenMetadata[tokenId].active) {
@@ -161,7 +206,7 @@ abstract contract BondTeller1155 is BondBaseTeller, IBondTeller1155, ERC1155 {
     /// @param tokenId_     Calculated ID of new bond token (from getTokenId)
     /// @param underlying_  Underlying token to be paid out when the bond token vests
     /// @param expiry_      Timestamp that the token will vest at, will be rounded to the nearest minute
-    function _deploy(uint256 tokenId_, ERC20 underlying_, uint48 expiry_) internal {
+    function _deploy(uint256 tokenId_, ERC20 underlying_, uint48 expiry_) internal whenNotPaused {
         // Expiry is rounded to the nearest minute at 0000 UTC (in seconds) since bond tokens
         // are only unique to a minute, not a specific timestamp.
         uint48 expiry = uint48(expiry_ / 1 minutes) * 1 minutes;
@@ -186,7 +231,7 @@ abstract contract BondTeller1155 is BondBaseTeller, IBondTeller1155, ERC1155 {
     /// @param to_          Address to mint tokens to
     /// @param tokenId_     ID of bond token to mint
     /// @param amount_      Amount of bond tokens to mint
-    function _mintToken(address to_, uint256 tokenId_, uint256 amount_) internal {
+    function _mintToken(address to_, uint256 tokenId_, uint256 amount_) internal whenNotPaused {
         tokenMetadata[tokenId_].supply += amount_;
         _mint(to_, tokenId_, amount_, bytes(""));
     }
@@ -195,13 +240,10 @@ abstract contract BondTeller1155 is BondBaseTeller, IBondTeller1155, ERC1155 {
     /// @param from_        Address to burn tokens from
     /// @param tokenId_     ID of bond token to burn
     /// @param amount_      Amount of bond token to burn
-    function _burnToken(address from_, uint256 tokenId_, uint256 amount_) internal {
+    function _burnToken(address from_, uint256 tokenId_, uint256 amount_) internal whenNotPaused {
         tokenMetadata[tokenId_].supply -= amount_;
         _burn(from_, tokenId_, amount_);
     }
-
-
-
 
     /* ========== TOKEN NAMING ========== */
 

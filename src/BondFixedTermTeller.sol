@@ -1,15 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-pragma solidity 0.8.15;
+pragma solidity 0.8.20;
 
-import {ERC20} from "solmate/src/tokens/ERC20.sol";
-
-import {BondBaseTeller, IBondAggregator, Authority} from "./bases/BondBaseTeller.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IAuthority} from "./interfaces/IAuthority.sol";
+import {IBondAggregator} from "./interfaces/IBondAggregator.sol";
 import {IBondTeller1155} from "./interfaces/IBondTeller1155.sol";
-
-import {TransferHelper} from "./lib/TransferHelper.sol";
+import {BondBaseTeller} from "./bases/BondBaseTeller.sol";
 import {FullMath} from "./lib/FullMath.sol";
-import {ERC1155} from "./lib/ERC1155.sol";
-import "./bases/BondTeller1155.sol";
+import {BondTeller1155Upgradeable} from "./bases/BondTeller1155Upgradeable.sol";
 
 /// @title Bond Fixed Term Teller
 /// @notice Bond Fixed Term Teller Contract
@@ -27,16 +26,42 @@ import "./bases/BondTeller1155.sol";
 ///      (rounded to the minute) as ERC1155 tokens.
 ///
 /// @author Oighty, Zeus, Potted Meat, indigo
-contract BondFixedTermTeller is BondTeller1155 {
-    using TransferHelper for ERC20;
+contract BondFixedTermTeller is BondTeller1155Upgradeable {
+    using SafeERC20 for ERC20;
 
     /* ========== CONSTRUCTOR ========== */
-    constructor(
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(
         address protocol_,
         IBondAggregator aggregator_,
         address guardian_,
-        Authority authority_
-    ) BondTeller1155(protocol_, aggregator_, guardian_, authority_) {}
+        IAuthority authority_
+    ) public initializer {
+        __BondFixedTermTeller_init(
+            protocol_,
+            aggregator_,
+            guardian_,
+            authority_
+        );
+    }
+
+    function __BondFixedTermTeller_init(
+        address protocol_,
+        IBondAggregator aggregator_,
+        address guardian_,
+        IAuthority authority_
+    ) internal onlyInitializing {
+        __BondTeller1155_init(
+            protocol_, 
+            aggregator_,
+            guardian_, 
+            authority_
+        );
+    }
 
     /* ========== PURCHASE ========== */
 
@@ -81,7 +106,7 @@ contract BondFixedTermTeller is BondTeller1155 {
         } else {
             // If no expiry, then transfer payout directly to user
             if (address(payoutToken_) == address(0)) {
-                bool sent = payable(recipient_).send(payout_);
+                (bool sent,) = payable(address(recipient_)).call{value: payout_}("");
                 require(sent, "Failed to send native tokens");
             } else {
                 payoutToken_.safeTransfer(recipient_, payout_);

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-pragma solidity 0.8.15;
+pragma solidity 0.8.20;
 
-import {ERC20} from "solmate/src/tokens/ERC20.sol";
-import {Auth, Authority} from "solmate/src/auth/Auth.sol";
-
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {Auth} from "./lib/Auth.sol";
+import {IAuthority} from "./interfaces/IAuthority.sol";
 import {IBondAggregator} from "./interfaces/IBondAggregator.sol";
 import {IBondTeller} from "./interfaces/IBondTeller.sol";
 import {IBondAuctioneer} from "./interfaces/IBondAuctioneer.sol";
@@ -56,7 +56,7 @@ contract BondAggregator is IBondAggregator, Auth {
     // A 'vesting' param longer than 50 years is considered a timestamp for fixed expiry.
     uint48 private constant MAX_FIXED_TERM = 52 weeks * 50;
 
-    constructor(address guardian_, Authority authority_) Auth(guardian_, authority_) {}
+    constructor(address guardian_, IAuthority authority_) Auth(guardian_, authority_) {}
 
     /// @inheritdoc IBondAggregator
     function registerAuctioneer(IBondAuctioneer auctioneer_) external requiresAuth {

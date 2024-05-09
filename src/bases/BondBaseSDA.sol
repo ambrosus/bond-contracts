@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-pragma solidity 0.8.15;
+pragma solidity 0.8.20;
 
-import {ERC20} from "solmate/src/tokens/ERC20.sol";
-import {ReentrancyGuard} from "solmate/src/utils/ReentrancyGuard.sol";
-import {Auth, Authority} from "solmate/src/auth/Auth.sol";
-
-import {IBondSDA, IBondAuctioneer} from "../interfaces/IBondSDA.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {FullMath} from "../lib/FullMath.sol";
+import {IAuthority} from "../interfaces/IAuthority.sol";
+import {IBondAuctioneer} from "../interfaces/IBondAuctioneer.sol";
+import {IBondSDA} from "../interfaces/IBondSDA.sol";
 import {IBondTeller} from "../interfaces/IBondTeller.sol";
 import {IBondAggregator} from "../interfaces/IBondAggregator.sol";
+import {BondBaseAuctioneer} from "./BondBaseAuctioneer.sol";
 
-import {TransferHelper} from "../lib/TransferHelper.sol";
-import {FullMath} from "../lib/FullMath.sol";
 
 /// @title Bond Sequential Dutch Auctioneer (SDA) v1.1
 /// @notice Bond Sequential Dutch Auctioneer Base Contract
@@ -30,24 +30,13 @@ import {FullMath} from "../lib/FullMath.sol";
 ///      tokens or sell a target amount of payout tokens over the duration of a market.
 ///
 /// @author Oighty, Zeus, Potted Meat, indigo
-abstract contract BondBaseSDA is IBondSDA, Auth {
-    using TransferHelper for ERC20;
+abstract contract BondBaseSDA is IBondSDA, BondBaseAuctioneer {
+    using SafeERC20 for ERC20;
     using FullMath for uint256;
 
     /* ========== ERRORS ========== */
 
-    error Auctioneer_OnlyMarketOwner();
     error Auctioneer_InitialPriceLessThanMin();
-    error Auctioneer_MarketNotActive();
-    error Auctioneer_MaxPayoutExceeded();
-    error Auctioneer_AmountLessThanMinimum();
-    error Auctioneer_NotEnoughCapacity();
-    error Auctioneer_InvalidCallback();
-    error Auctioneer_BadExpiry();
-    error Auctioneer_InvalidParams();
-    error Auctioneer_NotAuthorized();
-    error Auctioneer_NewMarketsNotAllowed();
-    error Auctioneer_UnsupportedToken();
 
     /* ========== EVENTS ========== */
 
@@ -87,10 +76,7 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
     /// @notice New address to designate as market owner. They must accept ownership to transfer permissions.
     mapping(uint256 => address) public newOwners;
 
-    /// @notice Whether or not the auctioneer allows new markets to be created
-    /// @dev    Changing to false will sunset the auctioneer after all active markets end
-    bool public allowNewMarkets;
-
+    
     /// @notice Whether or not the market creator is authorized to use a callback address
     mapping(address => bool) public callbackAuthorized;
 
@@ -103,33 +89,18 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
     uint32 public minMarketDuration;
     uint32 public minDebtBuffer;
 
-    // A 'vesting' param longer than 50 years is considered a timestamp for fixed expiry.
-    uint48 internal constant MAX_FIXED_TERM = 52 weeks * 50;
-    uint48 internal constant FEE_DECIMALS = 1e5; // one percent equals 1000.
-
-    // BondAggregator contract with utility functions
-    IBondAggregator internal immutable _aggregator;
-
-    // BondTeller contract that handles interactions with users and issues tokens
-    IBondTeller internal immutable _teller;
-
     constructor(
         IBondTeller teller_,
         IBondAggregator aggregator_,
         address guardian_,
-        Authority authority_
-    ) Auth(guardian_, authority_) {
-        _aggregator = aggregator_;
-        _teller = teller_;
-
+        IAuthority authority_
+    ) BondBaseAuctioneer( teller_, aggregator_,guardian_, authority_) {
         defaultTuneInterval = 3 minutes;
         defaultTuneAdjustment = 1 minutes;
         minDebtDecayInterval = 5 minutes;
         minDepositInterval = 1 minutes;
         minMarketDuration = 10 minutes;
         minDebtBuffer = 10000; // 10%
-
-        allowNewMarkets = true;
     }
 
     /* ========== MARKET FUNCTIONS ========== */
@@ -138,7 +109,7 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
     function createMarket(bytes calldata params_) external payable virtual returns (uint256);
 
     /// @notice core market creation logic, see IBondSDA.MarketParams documentation
-    function _createMarket(MarketParams memory params_) internal returns (uint256) {
+    function _createMarket(MarketParams memory params_) internal whenNotPaused returns (uint256) {
         {
             // Check that the auctioneer is allowing new markets to be created
             if (!allowNewMarkets) revert Auctioneer_NewMarketsNotAllowed();
@@ -186,7 +157,7 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
             // Ensure capacity is equal to the value sent
             if (params_.capacity != msg.value) revert Auctioneer_InvalidParams();
             // Send tokens to teller as it operates over purchase
-            bool sent = payable(address(_teller)).send(msg.value);
+            (bool sent,) = payable(address(_teller)).call{value: msg.value}("");
             require(sent, "Failed to send tokens to teller");
         } else {
             // Check balance before and after to ensure full amount received, revert if not
@@ -269,8 +240,8 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
         // See IBondSDA.MarketParams for more information on determining a reasonable debt buffer.
         uint256 maxDebt;
         {
-            uint256 minDebtBuffer_ = _maxPayout.mulDiv(FEE_DECIMALS, targetDebt) > minDebtBuffer
-                ? _maxPayout.mulDiv(FEE_DECIMALS, targetDebt)
+            uint256 minDebtBuffer_ = _maxPayout.mulDiv(ONE_HUNDRED_PERCENT, targetDebt) > minDebtBuffer
+                ? _maxPayout.mulDiv(ONE_HUNDRED_PERCENT, targetDebt)
                 : minDebtBuffer;
             maxDebt =
                 targetDebt +
@@ -308,7 +279,7 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
     }
 
     /// @inheritdoc IBondAuctioneer
-    function setIntervals(uint256 id_, uint32[3] calldata intervals_) external override {
+    function setIntervals(uint256 id_, uint32[3] calldata intervals_) external override onlyMarketOwner(id_) whenNotPaused {
         // Check that the market is live
         if (!isLive(id_)) revert Auctioneer_InvalidParams();
 
@@ -325,9 +296,11 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
         // Check that debtDecayInterval >= minDebtDecayInterval
         if (intervals_[2] < minDebtDecayInterval) revert Auctioneer_InvalidParams();
 
-        // Check that sender is market owner
         BondMarket memory market = markets[id_];
-        if (msg.sender != market.owner) revert Auctioneer_OnlyMarketOwner();
+        
+        // @note handled in `onlyMarketOwner`
+        // Check that sender is market owner
+        // if (msg.sender != market.owner) revert Auctioneer_OnlyMarketOwner();
 
         // Update intervals
         meta.tuneInterval = intervals_[0];
@@ -343,13 +316,12 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
     }
 
     /// @inheritdoc IBondAuctioneer
-    function pushOwnership(uint256 id_, address newOwner_) external override {
-        if (msg.sender != markets[id_].owner) revert Auctioneer_OnlyMarketOwner();
+    function pushOwnership(uint256 id_, address newOwner_) external override onlyMarketOwner(id_) whenNotPaused {
         newOwners[id_] = newOwner_;
     }
 
     /// @inheritdoc IBondAuctioneer
-    function pullOwnership(uint256 id_) external override {
+    function pullOwnership(uint256 id_) external override whenNotPaused {
         if (msg.sender != newOwners[id_]) revert Auctioneer_NotAuthorized();
         markets[id_].owner = newOwners[id_];
     }
@@ -390,15 +362,12 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
     }
 
     /// @inheritdoc IBondAuctioneer
-    function setAllowNewMarkets(bool status_) external override requiresAuth {
-        // Restricted to authorized addresses
-        allowNewMarkets = status_;
+    function setAllowNewMarkets(bool status_) external override(IBondAuctioneer, BondBaseAuctioneer) requiresAuth {
+        _setAllowNewMarkets(status_);
     }
 
     /// @inheritdoc IBondAuctioneer
-    function closeMarket(uint256 id_) external override {
-        if (msg.sender != address(_teller)) revert Auctioneer_NotAuthorized();
-
+    function closeMarket(uint256 id_) external override whenNotPaused onlyTeller {
         // If market closed early, set conclusion to current timestamp
         if (terms[id_].conclusion > uint48(block.timestamp)) {
             terms[id_].conclusion = uint48(block.timestamp);
@@ -416,7 +385,7 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
         uint256 id_,
         uint256 amount_,
         uint256 minAmountOut_
-    ) external override returns (uint256 payout) {
+    ) external override whenNotPaused onlyTeller returns (uint256 payout) {
         if (msg.sender != address(_teller)) revert Auctioneer_NotAuthorized();
 
         BondMarket storage market = markets[id_];
@@ -469,7 +438,7 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
 
     /// @notice          Stops markets bonding by setting conclusion to current timestamp
     /// @dev             This allow to stop the market and allow to withdraw left funds back to market owner
-    function _closeMarketPartialy(uint256 id_) internal {
+    function _closeMarketPartialy(uint256 id_) internal whenNotPaused {
         terms[id_].conclusion = uint48(block.timestamp);
 
         emit MarketPartialyClosed(id_);
@@ -485,7 +454,7 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
         uint256 id_,
         uint256 amount_,
         uint48 time_
-    ) internal returns (uint256 marketPrice_, uint256 payout_) {
+    ) internal whenNotPaused returns (uint256 marketPrice_, uint256 payout_) {
         BondMarket memory market = markets[id_];
 
         // Debt is a time-decayed sum of tokens spent in a market
@@ -562,7 +531,7 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
     /// @param id_          ID of market
     /// @param time_        Timestamp (saves gas when passed in)
     /// @param price_       Current price of the market
-    function _tune(uint256 id_, uint48 time_, uint256 price_) internal {
+    function _tune(uint256 id_, uint48 time_, uint256 price_) internal whenNotPaused {
         BondMetadata memory meta = metadata[id_];
         BondMarket memory market = markets[id_];
         BondTerms memory term = terms[id_];
@@ -673,7 +642,7 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
     }
 
     /// @inheritdoc IBondSDA
-    function marketPrice(uint256 id_) public view override returns (uint256) {
+    function marketPrice(uint256 id_) public view override (IBondAuctioneer, IBondSDA) returns (uint256) {
         uint256 price = currentControlVariable(id_).mulDivUp(currentDebt(id_), markets[id_].scale);
 
         return (price > markets[id_].minPrice) ? price : markets[id_].minPrice;
@@ -792,16 +761,6 @@ abstract contract BondBaseSDA is IBondSDA, Auth {
     /// @inheritdoc IBondAuctioneer
     function ownerOf(uint256 id_) external view override returns (address) {
         return markets[id_].owner;
-    }
-
-    /// @inheritdoc IBondAuctioneer
-    function getTeller() external view override returns (IBondTeller) {
-        return _teller;
-    }
-
-    /// @inheritdoc IBondAuctioneer
-    function getAggregator() external view override returns (IBondAggregator) {
-        return _aggregator;
     }
 
     /// @inheritdoc IBondAuctioneer

@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-pragma solidity 0.8.15;
+pragma solidity 0.8.20;
 
-import {BondBaseOFDA, IBondAggregator, Authority} from "./bases/BondBaseOFDA.sol";
+import {IAuthority} from "./interfaces/IAuthority.sol";
+import {IBondAggregator} from "./interfaces/IBondAggregator.sol";
 import {IBondTeller} from "./interfaces/IBondTeller.sol";
+import {BondBaseOFDA} from "./bases/BondBaseOFDA.sol";
 
 /// @title Bond Fixed-Expiry Fixed Discount Auctioneer
 /// @notice Bond Fixed-Expiry Fixed Discount Auctioneer Contract
@@ -33,7 +35,7 @@ contract BondFixedExpiryOFDA is BondBaseOFDA {
         IBondTeller teller_,
         IBondAggregator aggregator_,
         address guardian_,
-        Authority authority_
+        IAuthority authority_
     ) BondBaseOFDA(teller_, aggregator_, guardian_, authority_) {}
 
     /// @inheritdoc BondBaseOFDA

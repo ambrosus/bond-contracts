@@ -3,12 +3,13 @@ pragma solidity 0.8.20;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
+import {AuthUpgradeable} from "../lib/AuthUpgradeable.sol";
 import {IAuthority} from "../interfaces/IAuthority.sol";
+import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import {IBondTeller} from "../interfaces/IBondTeller.sol";
 import {IBondAggregator} from "../interfaces/IBondAggregator.sol";
 import {IBondAuctioneer} from "../interfaces/IBondAuctioneer.sol";
-import {Auth} from "../lib/Auth.sol";
 import {FullMath} from "../lib/FullMath.sol";
 
 /// @title Bond Teller
@@ -29,7 +30,12 @@ import {FullMath} from "../lib/FullMath.sol";
 ///      contracts to be deployed to provide markets for users to purchase bonds from.
 ///
 /// @author Oighty, Zeus, Potted Meat, indigo
-abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
+abstract contract BondBaseTellerUpgradeable is 
+    IBondTeller, 
+    AuthUpgradeable, 
+    PausableUpgradeable, 
+    ReentrancyGuardUpgradeable 
+{
     using SafeERC20 for ERC20;
     using FullMath for uint256;
 
@@ -65,21 +71,37 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
     address public beneficiary;
 
     // BondAggregator contract with utility functions
-    IBondAggregator internal immutable _aggregator;
+    IBondAggregator internal _aggregator;
 
-    constructor(
+    uint256[30] private __gap;
+
+    /* ========== INITIALIZER ========== */
+
+    function __BondBaseTeller_init(
         address beneficiary_,
         IBondAggregator aggregator_,
         address guardian_,
         IAuthority authority_
-    ) Auth(guardian_, authority_) {
+    ) internal onlyInitializing {
+        __ReentrancyGuard_init();
+        // Initialize Auth
+        __AuthUpgradeable_init(guardian_, authority_);
         beneficiary = beneficiary_;
         _aggregator = aggregator_;
-
-        // Explicitly setting these values to zero to document
         protocolFee = 0;
         createFeeDiscount = 0;
+     }
+    
+    /* ================================ */
+
+    function pause() public requiresAuth {
+        _pause();
     }
+
+    function unpause() public requiresAuth {
+        _unpause();
+    }
+
 
     /// @inheritdoc IBondTeller
     function setBeneficiary(address beneficiary_) external override requiresAuth {
@@ -138,14 +160,13 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
 
     /* ========== USER FUNCTIONS ========== */
 
-    /// @inheritdoc IBondTeller
-    function purchase(
+    function _purchase(
         address recipient_,
         address referrer_,
         uint256 id_,
         uint256 amount_,
         uint256 minAmountOut_
-    ) external payable virtual nonReentrant returns (uint256, uint48) {
+    ) internal returns (uint256, uint48) {
         ERC20 payoutToken;
         ERC20 quoteToken;
         uint48 vesting;
@@ -183,8 +204,19 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
         return (payout, expiry);
     }
 
+    /// @inheritdoc IBondTeller
+    function purchase(
+        address recipient_,
+        address referrer_,
+        uint256 id_,
+        uint256 amount_,
+        uint256 minAmountOut_
+    ) external payable virtual nonReentrant returns (uint256, uint48) {
+        return _purchase(recipient_, referrer_, id_, amount_, minAmountOut_);
+    }
+
     /// @notice     Handles transfer of funds from user
-    function _handleTransfers(uint256 id_, uint256 amount_, uint256 feePaid_) internal {
+    function _handleTransfers(uint256 id_, uint256 amount_, uint256 feePaid_) internal whenNotPaused {
         // Get info from auctioneer
         (address owner, , ERC20 quoteToken, , ) = _aggregator.getAuctioneer(id_).getMarketInfoForPurchase(id_);
 
@@ -232,7 +264,11 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
     /// @param recipient_   Address to receive payout
     /// @param token_       Token to be paid out
     /// @param amount_      Amount of token to be paid
-    function _handleFeePayout(address recipient_, ERC20 token_, uint256 amount_) internal {
+    function _handleFeePayout(
+        address recipient_, 
+        ERC20 token_, 
+        uint256 amount_
+    ) internal {
         if (address(token_) == address(0)) {
             (bool sent,) = payable(address(recipient_)).call{value: amount_}("");
             require(sent, "Failed to send native tokens");

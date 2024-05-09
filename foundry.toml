@@ -2,9 +2,10 @@
 verbosity = 0
 optimizer = true     # enable or disable the solc optimizer
 optimizer_runs = 100000 # the number of optimizer runs
-solc_version = '0.8.15'
+solc_version = '0.8.20'
 remappings = [
-    'solmate/=lib/solmate/src/',
-    'clones/=lib/clones-with-immutable-args/src/',
+    'ds-test/=lib/forge-std/lib/ds-test/src/',
     'forge-std/=lib/forge-std/src/',
+    '@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/',
+    '@openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/'
 ]

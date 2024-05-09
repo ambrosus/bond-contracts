@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-pragma solidity ^0.8.15;
+pragma solidity 0.8.20;
 
-import {ERC20} from "solmate/src/tokens/ERC20.sol";
-import {ReentrancyGuard} from "solmate/src/utils/ReentrancyGuard.sol";
-import {Auth, Authority} from "solmate/src/auth/Auth.sol";
-
-import {IBondOSDA, IBondAuctioneer} from "../interfaces/IBondOSDA.sol";
-import {IBondOracle} from "../interfaces/IBondOracle.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {FullMath} from "../lib/FullMath.sol";
+import {IAuthority} from "../interfaces/IAuthority.sol";
+import {IBondAuctioneer} from "../interfaces/IBondAuctioneer.sol";
+import {IBondOSDA} from "../interfaces/IBondOSDA.sol";
 import {IBondTeller} from "../interfaces/IBondTeller.sol";
 import {IBondAggregator} from "../interfaces/IBondAggregator.sol";
+import {IBondOracle} from "../interfaces/IBondOracle.sol";
+import {BondBaseOracleAuctioneer, BondBaseAuctioneer} from "./BondBaseOracleAuctioneer.sol";
 
-import {TransferHelper} from "../lib/TransferHelper.sol";
-import {FullMath} from "../lib/FullMath.sol";
 
 /// @title Bond Oracle-based Sequential Dutch Auctioneer (OSDA)
 /// @notice Bond Oracle-based Sequential Dutch Auctioneer Base Contract
@@ -32,29 +32,21 @@ import {FullMath} from "../lib/FullMath.sol";
 ///      an Aggregator to register new markets.
 ///
 /// @author Oighty
-abstract contract BondBaseOSDA is IBondOSDA, Auth {
-    using TransferHelper for ERC20;
+abstract contract BondBaseOSDA is IBondOSDA, BondBaseOracleAuctioneer {
+    using SafeERC20 for ERC20;
     using FullMath for uint256;
 
-    /* ========== ERRORS ========== */
-
-    error Auctioneer_OnlyMarketOwner();
     error Auctioneer_InitialPriceLessThanMin();
-    error Auctioneer_MarketNotActive();
-    error Auctioneer_MaxPayoutExceeded();
-    error Auctioneer_AmountLessThanMinimum();
-    error Auctioneer_NotEnoughCapacity();
-    error Auctioneer_InvalidCallback();
-    error Auctioneer_BadExpiry();
-    error Auctioneer_InvalidParams();
-    error Auctioneer_NotAuthorized();
-    error Auctioneer_NewMarketsNotAllowed();
-    error Auctioneer_OraclePriceZero();
-    error Auctioneer_UnsupportedToken();
+
 
     /* ========== EVENTS ========== */
 
-    event MarketCreated(uint256 indexed id, address indexed payoutToken, address indexed quoteToken, uint48 vesting);
+    event MarketCreated(
+        uint256 indexed id, 
+        address indexed payoutToken, 
+        address indexed quoteToken, 
+        uint48 vesting
+    );
     event MarketClosed(uint256 indexed id);
     event Tuned(uint256 indexed id, uint256 oldControlVariable, uint256 newControlVariable);
 
@@ -69,13 +61,6 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
     /// @notice New address to designate as market owner. They must accept ownership to transfer permissions.
     mapping(uint256 => address) public newOwners;
 
-    /// @notice Whether or not the market creator is authorized to use a callback address
-    mapping(address => bool) public callbackAuthorized;
-
-    /// @notice Whether or not the auctioneer allows new markets to be created
-    /// @dev    Changing to false will sunset the auctioneer after all active markets end
-    bool public allowNewMarkets;
-
     // Minimum time parameter values. Can be updated by admin.
     /// @notice Minimum deposit interval for a market
     uint48 public minDepositInterval;
@@ -83,29 +68,17 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
     /// @notice Minimum duration for a market
     uint48 public minMarketDuration;
 
-    // A 'vesting' param longer than 50 years is considered a timestamp for fixed expiry.
-    uint48 internal constant MAX_FIXED_TERM = 52 weeks * 50;
-    uint48 internal constant ONE_HUNDRED_PERCENT = 100e3; // one percent equals 1000.
-
-    // BondAggregator contract with utility functions
-    IBondAggregator internal immutable _aggregator;
-
-    // BondTeller contract that handles interactions with users and issues tokens
-    IBondTeller internal immutable _teller;
+    /// @notice Whether or not the market creator is authorized to use a callback address
+    mapping(address => bool) public callbackAuthorized;
 
     constructor(
         IBondTeller teller_,
         IBondAggregator aggregator_,
         address guardian_,
-        Authority authority_
-    ) Auth(guardian_, authority_) {
-        _aggregator = aggregator_;
-        _teller = teller_;
-
+        IAuthority authority_
+    ) BondBaseOracleAuctioneer( teller_, aggregator_,guardian_, authority_){
         minDepositInterval = 1 minutes;
         minMarketDuration = 10 minutes;
-
-        allowNewMarkets = true;
     }
 
     /* ========== MARKET FUNCTIONS ========== */
@@ -114,7 +87,7 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
     function createMarket(bytes calldata params_) external payable virtual returns (uint256);
 
     /// @notice core market creation logic, see IBondOSDA.MarketParams documentation
-    function _createMarket(MarketParams memory params_) internal returns (uint256) {
+    function _createMarket(MarketParams memory params_) internal whenNotPaused returns (uint256) {
         // Upfront permission and timing checks
         {
             // Check that the auctioneer is allowing new markets to be created
@@ -171,7 +144,7 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
             // Ensure capacity is equal to the value sent
             if (params_.capacity != msg.value) revert Auctioneer_InvalidParams();
             // Send tokens to teller as it operates over purchase
-            bool sent = payable(address(_teller)).send(msg.value);
+            (bool sent,) = payable(address(_teller)).call{value: msg.value}("");
             require(sent, "Failed to send tokens to teller");
         } else {
             // Check balance before and after to ensure full amount received, revert if not
@@ -203,89 +176,15 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
         return marketId;
     }
 
-    function _validateOracle(
-        uint256 id_,
-        IBondOracle oracle_,
-        ERC20 quoteToken_,
-        ERC20 payoutToken_,
-        uint48 baseDiscount_
-    ) internal returns (uint256, uint256, uint256) {
-        // Default value for native token
-        uint8 payoutTokenDecimals = 18;
-        uint8 quoteTokenDecimals = 18;
-
-        // Ensure token decimals are in bounds
-        // If token is native no need to check decimals
-        if (address(payoutToken_) != address(0)) {
-            payoutTokenDecimals = payoutToken_.decimals();
-            if (payoutTokenDecimals < 6 || payoutTokenDecimals > 18) revert Auctioneer_InvalidParams();
-        }
-        if (address(quoteToken_) != address(0)) {
-            quoteTokenDecimals = quoteToken_.decimals();
-            if (quoteTokenDecimals < 6 || quoteTokenDecimals > 18) revert Auctioneer_InvalidParams();
-        }
-
-        // Check that oracle is valid. It should:
-        // 1. Be a contract
-        if (address(oracle_) == address(0) || address(oracle_).code.length == 0) revert Auctioneer_InvalidParams();
-
-        // 2. Allow registering markets
-        oracle_.registerMarket(id_, quoteToken_, payoutToken_);
-
-        // 3. Return a valid price for the quote token : payout token pair
-        uint256 currentPrice = oracle_.currentPrice(id_);
-        if (currentPrice == 0) revert Auctioneer_OraclePriceZero();
-
-        // 4. Return a valid decimal value for the quote token : payout token pair price
-        uint8 oracleDecimals = oracle_.decimals(id_);
-        if (oracleDecimals < 6 || oracleDecimals > 18) revert Auctioneer_InvalidParams();
-
-        // Calculate scaling values for market:
-        // 1. We need a value to convert between the oracle decimals to the bond market decimals
-        // 2. We need the bond scaling value to convert between quote and payout tokens using the market price
-
-        // Get the price decimals for the current oracle price
-        // Oracle price is in quote tokens per payout token
-        // E.g. if quote token is $10 and payout token is $2000,
-        // then the oracle price is 200 quote tokens per payout token.
-        // If the oracle has 18 decimals, then it would return 200 * 10^18.
-        // In this case, the price decimals would be 2 since 200 = 2 * 10^2.
-        // We apply the base discount to the oracle price before calculating
-        // since this will be the initial equilibrium price of the market.
-        int8 priceDecimals = _getPriceDecimals(
-            currentPrice.mulDivUp(uint256(ONE_HUNDRED_PERCENT - baseDiscount_), uint256(ONE_HUNDRED_PERCENT)),
-            oracleDecimals
-        );
-        // Check price decimals in reasonable range
-        // These bounds are quite large and it is unlikely any combination of tokens
-        // will have a price difference larger than 10^24 in either direction.
-        // Check that oracle decimals are large enough to avoid precision loss from negative price decimals
-        if (int8(oracleDecimals) <= -priceDecimals || priceDecimals > 24) revert Auctioneer_InvalidParams();
-
-        // Calculate the oracle price conversion factor
-        // oraclePriceFactor = int8(oracleDecimals) + priceDecimals;
-        // bondPriceFactor = 36 - priceDecimals / 2 + priceDecimals;
-        // oracleConversion = 10^(bondPriceFactor - oraclePriceFactor);
-        uint256 oracleConversion = 10 ** uint8(36 - priceDecimals / 2 - int8(oracleDecimals));
-
-        // Unit to scale calculation for this market by to ensure reasonable values
-        // for price, debt, and control variable without under/overflows.
-        //
-        // scaleAdjustment should be equal to (payoutDecimals - quoteDecimals) - ((payoutPriceDecimals - quotePriceDecimals) / 2)
-        // scale = 10^(36 + scaleAdjustment);
-        uint256 scale = 10 ** uint8(36 + int8(payoutTokenDecimals) - int8(quoteTokenDecimals) - priceDecimals / 2);
-
-        return (currentPrice * oracleConversion, oracleConversion, scale);
-    }
 
     /// @inheritdoc IBondAuctioneer
-    function pushOwnership(uint256 id_, address newOwner_) external override {
+    function pushOwnership(uint256 id_, address newOwner_) external override onlyMarketOwner(id_) whenNotPaused {
         if (msg.sender != markets[id_].owner) revert Auctioneer_OnlyMarketOwner();
         newOwners[id_] = newOwner_;
     }
 
     /// @inheritdoc IBondAuctioneer
-    function pullOwnership(uint256 id_) external override {
+    function pullOwnership(uint256 id_) external override whenNotPaused {
         if (msg.sender != newOwners[id_]) revert Auctioneer_NotAuthorized();
         markets[id_].owner = newOwners[id_];
     }
@@ -311,21 +210,19 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
     }
 
     // Unused, but required by interface
-    function setIntervals(uint256 id_, uint32[3] calldata intervals_) external override {}
+    function setIntervals(uint256 id_, uint32[3] calldata intervals_) external override onlyMarketOwner(id_) {}
 
     // Unused, but required by interface
-    function setDefaults(uint32[6] memory defaults_) external override {}
+    function setDefaults(uint32[6] memory defaults_) external override requiresAuth {}
 
     /// @inheritdoc IBondAuctioneer
-    function setAllowNewMarkets(bool status_) external override requiresAuth {
-        /// Restricted to authorized addresses, initially restricted to guardian
-        allowNewMarkets = status_;
+    function setAllowNewMarkets(bool status_) external override(IBondAuctioneer, BondBaseAuctioneer) requiresAuth {
+        _setAllowNewMarkets(status_);
     }
 
     /// @inheritdoc IBondAuctioneer
-    function closeMarket(uint256 id_) external override {
-        if (msg.sender != address(_teller)) revert Auctioneer_NotAuthorized();
-
+    function closeMarket(uint256 id_) external override onlyTeller whenNotPaused {
+        
         // If market closed early, set conclusion to current timestamp
         if (terms[id_].conclusion > uint48(block.timestamp)) {
             terms[id_].conclusion = uint48(block.timestamp);
@@ -343,9 +240,8 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
         uint256 id_,
         uint256 amount_,
         uint256 minAmountOut_
-    ) external override returns (uint256 payout) {
-        if (msg.sender != address(_teller)) revert Auctioneer_NotAuthorized();
-
+    ) external override onlyTeller whenNotPaused returns (uint256 payout) {
+        
         BondMarket storage market = markets[id_];
         BondTerms memory term = terms[id_];
 
@@ -455,23 +351,6 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
         return price.mulDivUp(adjustment, ONE_HUNDRED_PERCENT);
     }
 
-    /* ========== INTERNAL VIEW FUNCTIONS ========== */
-
-    /// @notice         Helper function to calculate number of price decimals based on the value returned from the price feed.
-    /// @param price_   The price to calculate the number of decimals for
-    /// @return         The number of decimals
-    function _getPriceDecimals(uint256 price_, uint8 feedDecimals_) internal pure returns (int8) {
-        int8 decimals;
-        while (price_ >= 10) {
-            price_ = price_ / 10;
-            decimals++;
-        }
-
-        // Subtract the stated decimals from the calculated decimals to get the relative price decimals.
-        // Required to do it this way vs. normalizing at the beginning since price decimals can be negative.
-        return decimals - int8(feedDecimals_);
-    }
-
     /* ========== EXTERNAL VIEW FUNCTIONS ========== */
 
     /// @inheritdoc IBondAuctioneer
@@ -488,7 +367,7 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
     }
 
     /// @inheritdoc IBondOSDA
-    function marketPrice(uint256 id_) public view override returns (uint256) {
+    function marketPrice(uint256 id_) public view override(IBondAuctioneer, IBondOSDA) returns (uint256) {
         uint256 price = _currentMarketPrice(id_);
 
         return (price > terms[id_].minPrice) ? price : terms[id_].minPrice;
@@ -564,16 +443,6 @@ abstract contract BondBaseOSDA is IBondOSDA, Auth {
     /// @inheritdoc IBondAuctioneer
     function ownerOf(uint256 id_) external view override returns (address) {
         return markets[id_].owner;
-    }
-
-    /// @inheritdoc IBondAuctioneer
-    function getTeller() external view override returns (IBondTeller) {
-        return _teller;
-    }
-
-    /// @inheritdoc IBondAuctioneer
-    function getAggregator() external view override returns (IBondAggregator) {
-        return _aggregator;
     }
 
     /// @inheritdoc IBondAuctioneer
