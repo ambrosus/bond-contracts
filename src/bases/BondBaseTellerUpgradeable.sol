@@ -123,10 +123,19 @@ abstract contract BondBaseTellerUpgradeable is
         
         uint256 baseFee = uint256(protocolFee);
         uint8 feedDecimals = feeDiscountFeeder.decimals();
-        uint256 discount = feeDiscountFeeder.getDiscount(staker_, stakingToken);
-        return uint48(baseFee.mulDiv(discount, 10 ** feedDecimals));
-    }
+        uint256 DiscountHundredPercent = 10 ** feedDecimals;
+        uint256 discountPercent = feeDiscountFeeder.getDiscount(staker_, stakingToken);
 
+        /// @dev baseFee * (100% - discountPercent) / 100%
+        /// @dev note: discountPercent is in basis (`feeDiscountFeeder.decimals()`) points
+        /// and needs to be normalized to baseFee's decimals
+
+        return uint48(
+            baseFee.mulDiv(
+                (DiscountHundredPercent - discountPercent), /// @dev 100% - discountPercent
+                DiscountHundredPercent /// @dev 100%
+        ));
+    }
     /// @inheritdoc IBondTeller
     function setBeneficiary(address beneficiary_) external override requiresAuth {
         beneficiary = beneficiary_;
