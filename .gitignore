@@ -1,5 +1,6 @@
 out/
 cache/
+dependencies/
 .env
 .DS_Store
 **/artifacts/**

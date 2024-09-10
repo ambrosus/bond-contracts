@@ -1,15 +1,15 @@
 /// SPDX-License-Identifier: AGPL-3.0
 pragma solidity 0.8.20;
 
-import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {IBondTeller} from "../interfaces/IBondTeller.sol";
-import {IAuthority} from "../interfaces/IAuthority.sol";
+import {FullMath} from "../../lib/FullMath.sol";
+import {IAuthority} from "../../lib/interfaces/IAuthority.sol";
 import {IBondAggregator} from "../interfaces/IBondAggregator.sol";
 import {IBondAuctioneer} from "../interfaces/IBondAuctioneer.sol";
-import {FullMath} from "../lib/FullMath.sol";
 import {IBondFPDA} from "../interfaces/IBondFPDA.sol";
+import {IBondTeller} from "../interfaces/IBondTeller.sol";
 import {BondBaseAuctioneer} from "./BondBaseAuctioneer.sol";
+import {ERC20} from "@openzeppelin-contracts/token/ERC20/ERC20.sol";
+import {SafeERC20} from "@openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol";
 
 /// @title Bond Fixed Price (with) Discount Auctioneer
 /// @notice Bond Fixed Price (with) Discount Auctioneer Base Contract
@@ -34,19 +34,15 @@ import {BondBaseAuctioneer} from "./BondBaseAuctioneer.sol";
 ///
 /// @author Oighty
 abstract contract BondBaseFPDA is IBondFPDA, BondBaseAuctioneer {
+
     using SafeERC20 for ERC20;
     using FullMath for uint256;
 
     /* ========== EVENTS ========== */
 
     event MarketCreated(
-        uint256 indexed id,
-        address indexed payoutToken,
-        address indexed quoteToken,
-        uint48 vesting,
-        uint256 fixedPrice
+        uint256 indexed id, address indexed payoutToken, address indexed quoteToken, uint48 vesting, uint256 fixedPrice
     );
-    event MarketClosed(uint256 indexed id);
 
     /* ========== STATE VARIABLES ========== */
 
@@ -79,10 +75,14 @@ abstract contract BondBaseFPDA is IBondFPDA, BondBaseAuctioneer {
     /* ========== MARKET FUNCTIONS ========== */
 
     /// @inheritdoc IBondAuctioneer
-    function createMarket(bytes calldata params_) external payable virtual returns (uint256);
+    function createMarket(
+        bytes calldata params_
+    ) external payable virtual returns (uint256);
 
     /// @notice core market creation logic, see IBondFPA.MarketParams documentation
-    function _createMarket(MarketParams memory params_) internal whenNotPaused returns (uint256) {
+    function _createMarket(
+        MarketParams memory params_
+    ) internal whenNotPaused returns (uint256) {
         {
             // Check that the auctioneer is allowing new markets to be created
             if (!allowNewMarkets) revert Auctioneer_NewMarketsNotAllowed();
@@ -106,7 +106,8 @@ abstract contract BondBaseFPDA is IBondFPDA, BondBaseAuctioneer {
         // Unit to scale calculation for this market by to ensure reasonable values.
         // See IBondFPA for more details.
         //
-        // scaleAdjustment should be equal to (payoutDecimals - quoteDecimals) - ((payoutPriceDecimals - quotePriceDecimals) / 2)
+        // scaleAdjustment should be equal to (payoutDecimals - quoteDecimals) - ((payoutPriceDecimals -
+        // quotePriceDecimals) / 2)
         uint256 scale;
         unchecked {
             scale = 10 ** uint8(36 + params_.scaleAdjustment);
@@ -117,9 +118,8 @@ abstract contract BondBaseFPDA is IBondFPDA, BondBaseAuctioneer {
 
         // Check time bounds
         if (
-            params_.duration < minMarketDuration ||
-            params_.depositInterval < minDepositInterval ||
-            params_.depositInterval > params_.duration
+            params_.duration < minMarketDuration || params_.depositInterval < minDepositInterval
+                || params_.depositInterval > params_.duration
         ) revert Auctioneer_InvalidParams();
 
         // If payout is native token
@@ -127,15 +127,16 @@ abstract contract BondBaseFPDA is IBondFPDA, BondBaseAuctioneer {
             // Ensure capacity is equal to the value sent
             if (params_.capacity != msg.value) revert Auctioneer_InvalidParams();
             // Send tokens to teller as it operates over purchase
-            (bool sent, ) = payable(address(_teller)).call{value: msg.value}("");
+            (bool sent,) = payable(address(_teller)).call{value: msg.value}("");
             require(sent, "Failed to send tokens to teller");
         } else {
             // Check balance before and after to ensure full amount received, revert if not
             // Handles edge cases like fee-on-transfer tokens (which are not supported)
             uint256 payoutBalance = params_.payoutToken.balanceOf(address(_teller));
             params_.payoutToken.safeTransferFrom(msg.sender, address(_teller), params_.capacity);
-            if (params_.payoutToken.balanceOf(address(_teller)) < payoutBalance + params_.capacity)
+            if (params_.payoutToken.balanceOf(address(_teller)) < payoutBalance + params_.capacity) {
                 revert Auctioneer_UnsupportedToken();
+            }
         }
 
         // Calculate the maximum payout amount for this market
@@ -163,11 +164,7 @@ abstract contract BondBaseFPDA is IBondFPDA, BondBaseAuctioneer {
         terms[marketId] = BondTerms({start: start, conclusion: start + params_.duration, vesting: params_.vesting});
 
         emit MarketCreated(
-            marketId,
-            address(params_.payoutToken),
-            address(params_.quoteToken),
-            params_.vesting,
-            params_.formattedPrice
+            marketId, address(params_.payoutToken), address(params_.quoteToken), params_.vesting, params_.formattedPrice
         );
 
         return marketId;
@@ -179,13 +176,17 @@ abstract contract BondBaseFPDA is IBondFPDA, BondBaseAuctioneer {
     }
 
     /// @inheritdoc IBondAuctioneer
-    function pullOwnership(uint256 id_) external override whenNotPaused {
+    function pullOwnership(
+        uint256 id_
+    ) external override whenNotPaused {
         if (msg.sender != newOwners[id_]) revert Auctioneer_NotAuthorized();
         markets[id_].owner = newOwners[id_];
     }
 
     /// @inheritdoc IBondFPDA
-    function setMinMarketDuration(uint48 duration_) external override requiresAuth {
+    function setMinMarketDuration(
+        uint48 duration_
+    ) external override requiresAuth {
         // Restricted to authorized addresses
 
         // Require duration to be greater than minimum deposit interval and at least 10 minutes
@@ -195,7 +196,9 @@ abstract contract BondBaseFPDA is IBondFPDA, BondBaseAuctioneer {
     }
 
     /// @inheritdoc IBondFPDA
-    function setMinDepositInterval(uint48 depositInterval_) external override requiresAuth {
+    function setMinDepositInterval(
+        uint48 depositInterval_
+    ) external override requiresAuth {
         // Restricted to authorized addresses
 
         // Require min deposit interval to be less than minimum market duration and at least 1 minute
@@ -208,14 +211,16 @@ abstract contract BondBaseFPDA is IBondFPDA, BondBaseAuctioneer {
     function setIntervals(uint256 id_, uint32[3] calldata intervals_) external override onlyMarketOwner(id_) {}
 
     // Unused, but required by interface
-    function setDefaults(uint32[6] memory defaults_) external override requiresAuth {}
+    function setDefaults(
+        uint32[6] memory defaults_
+    ) external override requiresAuth {}
 
     /// @inheritdoc IBondAuctioneer
-    function closeMarket(uint256 id_) external override onlyTeller whenNotPaused {
+    function closeMarket(
+        uint256 id_
+    ) external override onlyTeller whenNotPaused {
         // If market closed early, set conclusion to current timestamp
-        if (terms[id_].conclusion > uint48(block.timestamp)) {
-            terms[id_].conclusion = uint48(block.timestamp);
-        }
+        if (terms[id_].conclusion > uint48(block.timestamp)) terms[id_].conclusion = uint48(block.timestamp);
 
         markets[id_].capacity = 0;
 
@@ -279,18 +284,21 @@ abstract contract BondBaseFPDA is IBondFPDA, BondBaseAuctioneer {
     }
 
     /// @inheritdoc IBondAuctioneer
-    function marketPrice(uint256 id_) public view override(IBondAuctioneer, IBondFPDA) returns (uint256) {
-        return
-            isActiveManager(id_)
-                ? markets[id_].discountTierManager.applyDiscount(
-                        markets[id_].price, 
-                        tx.origin // user related to the transaction and discount
-                    )
-                : markets[id_].price;
+    function marketPrice(
+        uint256 id_
+    ) public view override (IBondAuctioneer, IBondFPDA) returns (uint256) {
+        return isActiveManager(id_)
+            ? markets[id_].discountTierManager.applyDiscount(
+                markets[id_].price,
+                tx.origin // user related to the transaction and discount
+            )
+            : markets[id_].price;
     }
 
     /// @inheritdoc IBondAuctioneer
-    function marketScale(uint256 id_) external view override returns (uint256) {
+    function marketScale(
+        uint256 id_
+    ) external view override returns (uint256) {
         return markets[id_].scale;
     }
 
@@ -302,11 +310,8 @@ abstract contract BondBaseFPDA is IBondFPDA, BondBaseAuctioneer {
 
         // Check that the payout is less than or equal to the maximum payout,
         // Revert if not, otherwise return the payout
-        if (payout > maxPayout(id_)) {
-            revert Auctioneer_MaxPayoutExceeded();
-        } else {
-            return payout;
-        }
+        if (payout > maxPayout(id_)) revert Auctioneer_MaxPayoutExceeded();
+        else return payout;
     }
 
     /// @inheritdoc IBondAuctioneer
@@ -330,7 +335,9 @@ abstract contract BondBaseFPDA is IBondFPDA, BondBaseAuctioneer {
     }
 
     /// @inheritdoc IBondFPDA
-    function maxPayout(uint256 id_) public view override returns (uint256) {
+    function maxPayout(
+        uint256 id_
+    ) public view override returns (uint256) {
         BondMarket memory market = markets[id_];
 
         // Cap max payout at the remaining capacity
@@ -338,19 +345,26 @@ abstract contract BondBaseFPDA is IBondFPDA, BondBaseAuctioneer {
     }
 
     /// @inheritdoc IBondAuctioneer
-    function isInstantSwap(uint256 id_) public view returns (bool) {
+    function isInstantSwap(
+        uint256 id_
+    ) public view returns (bool) {
         uint256 vesting = terms[id_].vesting;
         return (vesting <= MAX_FIXED_TERM) ? vesting == 0 : vesting <= block.timestamp;
     }
 
     /// @inheritdoc IBondAuctioneer
-    function isLive(uint256 id_) public view override returns (bool) {
-        return (markets[id_].capacity != 0 &&
-            terms[id_].conclusion > uint48(block.timestamp) &&
-            terms[id_].start <= uint48(block.timestamp));
+    function isLive(
+        uint256 id_
+    ) public view override returns (bool) {
+        return (
+            markets[id_].capacity != 0 && terms[id_].conclusion > uint48(block.timestamp)
+                && terms[id_].start <= uint48(block.timestamp)
+        );
     }
 
-    function isActiveManager(uint256 id_) internal view returns (bool) {
+    function isActiveManager(
+        uint256 id_
+    ) internal view returns (bool) {
         try markets[id_].discountTierManager.tier(0) {
             // call default tier to check if it exists
             return true;
@@ -360,22 +374,31 @@ abstract contract BondBaseFPDA is IBondFPDA, BondBaseAuctioneer {
     }
 
     /// @inheritdoc IBondAuctioneer
-    function isClosing(uint256 id_) public view override returns (bool) {
+    function isClosing(
+        uint256 id_
+    ) public view override returns (bool) {
         return (markets[id_].capacity != 0 && terms[id_].conclusion < uint48(block.timestamp));
     }
 
     /// @inheritdoc IBondAuctioneer
-    function ownerOf(uint256 id_) external view override returns (address) {
+    function ownerOf(
+        uint256 id_
+    ) external view override returns (address) {
         return markets[id_].owner;
     }
 
     /// @inheritdoc IBondAuctioneer
-    function currentCapacity(uint256 id_) external view override returns (uint256) {
+    function currentCapacity(
+        uint256 id_
+    ) external view override returns (uint256) {
         return markets[id_].capacity;
     }
 
     /// @inheritdoc IBondAuctioneer
-    function getConclusion(uint256 id_) external view override returns (uint48) {
+    function getConclusion(
+        uint256 id_
+    ) external view override returns (uint48) {
         return terms[id_].conclusion;
     }
+
 }

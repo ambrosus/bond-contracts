@@ -1,11 +1,54 @@
 [profile.default]
-verbosity = 0
+
+rpc_endpoints = { dev = "https://network.ambrosus-dev.io/", test = "https://network.ambrosus-test.io", main = "https://network.ambrosus.io"}
+
+solc_version = '0.8.20'
 optimizer = true     # enable or disable the solc optimizer
 optimizer_runs = 100000 # the number of optimizer runs
-solc_version = '0.8.20'
+evm_version = 'Istanbul'
+
+extra_output = ["storageLayout"]
+src = 'src'
+out = 'out'
+ffi = true
+ast = true
+build_info = true
+auto_detect_remappings = true
+verbosity = 3
+show_progress = true
+show_logs = true
+libs=["dependencies", "test/utils"]
 remappings = [
-    'ds-test/=lib/forge-std/lib/ds-test/src/',
-    'forge-std/=lib/forge-std/src/',
-    '@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/',
-    '@openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/'
+  "@openzeppelin-contracts-upgradeable/=dependencies/@openzeppelin-contracts-upgradeable-4.9.6/", 
+  "@openzeppelin-contracts/=dependencies/@openzeppelin-contracts-4.9.6/",
+  "@openzeppelin/contracts/=dependencies/@openzeppelin-contracts-4.9.6/", 
+  "forge-std/=dependencies/forge-std-1.9.2/src/", 
+  "openzeppelin-foundry-upgrades/=dependencies/openzeppelin-foundry-upgrades-0.3.3/src/"
 ]
+[profile.ci]
+verbosity = 4
+[fmt]
+single_line_statement_blocks = "single"
+multiline_func_header = "params_first"
+sort_imports = true
+contract_new_lines = true
+override_spacing = true
+line_length = 120
+tab_width = 4
+bracket_spacing = false
+quote_style = "double"
+number_underscore = "thousands"
+wrap_comments = true
+[soldeer]
+# whether soldeer manages remappings
+remappings_generate = true
+# whether soldeer re-generates all remappings when installing, updating or uninstalling deps
+remappings_regenerate = false
+remappings_version = false
+remappings_location = "config"
+recursive_deps = true
+[dependencies]
+forge-std = { version = "1.9.2", url = "https://soldeer-revisions.s3.amazonaws.com/forge-std/1_9_2_06-08-2024_17:31:25_forge-std-1.9.2.zip" }
+"@openzeppelin-contracts" = "4.9.6"
+"@openzeppelin-contracts-upgradeable" = "4.9.6"
+openzeppelin-foundry-upgrades = "0.3.3"

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 pragma solidity 0.8.20;
 
-import {IAuthority} from "./interfaces/IAuthority.sol";
+import {IAuthority} from "../lib/interfaces/IAuthority.sol";
+import {BondBaseSDA} from "./bases/BondBaseSDA.sol";
 import {IBondAggregator} from "./interfaces/IBondAggregator.sol";
 import {IBondTeller} from "./interfaces/IBondTeller.sol";
-import {BondBaseSDA} from "./bases/BondBaseSDA.sol";
 
 /// @title Bond Fixed-Expiry Sequential Dutch Auctioneer v1.1
 /// @notice Bond Fixed-Expiry Sequential Dutch Auctioneer Contract
@@ -22,6 +22,7 @@ import {BondBaseSDA} from "./bases/BondBaseSDA.sol";
 ///
 /// @author Oighty, Zeus, Potted Meat, indigo
 contract BondFixedExpirySDA is BondBaseSDA {
+
     /* ========== CONSTRUCTOR ========== */
     constructor(
         IBondTeller teller_,
@@ -31,7 +32,9 @@ contract BondFixedExpirySDA is BondBaseSDA {
     ) BondBaseSDA(teller_, aggregator_, guardian_, authority_) {}
 
     /// @inheritdoc BondBaseSDA
-    function createMarket(bytes calldata params_) external payable override returns (uint256) {
+    function createMarket(
+        bytes calldata params_
+    ) external payable override returns (uint256) {
         // Decode params into the struct type expected by this auctioneer
         MarketParams memory params = abi.decode(params_, (MarketParams));
 
@@ -50,4 +53,5 @@ contract BondFixedExpirySDA is BondBaseSDA {
         // Create market and return market ID
         return _createMarket(params);
     }
+
 }

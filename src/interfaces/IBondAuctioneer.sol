@@ -1,21 +1,45 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity >=0.8.0;
 
-import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import {IBondTeller} from "../interfaces/IBondTeller.sol";
 import {IBondAggregator} from "../interfaces/IBondAggregator.sol";
+import {IBondTeller} from "../interfaces/IBondTeller.sol";
+import {ERC20} from "@openzeppelin-contracts/token/ERC20/ERC20.sol";
 
 interface IBondAuctioneer {
+
+    //#region ========== ERRORS ========== */
+
+    error Auctioneer_Unreachable();
+
+    error Auctioneer_OnlyMarketOwner();
+    error Auctioneer_MarketNotActive();
+    error Auctioneer_MaxPayoutExceeded();
+    error Auctioneer_AmountLessThanMinimum();
+    error Auctioneer_NotEnoughCapacity();
+    error Auctioneer_InvalidCallback();
+    error Auctioneer_BadExpiry();
+    error Auctioneer_InvalidParams();
+    error Auctioneer_NotAuthorized();
+    error Auctioneer_NewMarketsNotAllowed();
+    error Auctioneer_UnsupportedToken();
+    //#endregion ========== ERRORS ========== */
+
+    event MarketClosed(uint256 indexed id);
+
     /// @notice                 Creates a new bond market
     /// @param params_          Configuration data needed for market creation, encoded in a bytes array
     /// @dev                    See specific auctioneer implementations for details on encoding the parameters.
     /// @return id              ID of new bond market
-    function createMarket(bytes memory params_) external payable returns (uint256);
+    function createMarket(
+        bytes memory params_
+    ) external payable returns (uint256);
 
     /// @notice                 Disable existing bond market
     /// @notice                 Must be market owner
     /// @param id_              ID of market to close
-    function closeMarket(uint256 id_) external;
+    function closeMarket(
+        uint256 id_
+    ) external;
 
     /// @notice                 Exchange quote tokens for a bond in a specified market
     /// @notice                 Must be teller
@@ -45,9 +69,12 @@ interface IBondAuctioneer {
 
     /// @notice                      Accept ownership of a market
     /// @notice                      Must be market newOwner
-    /// @dev                         The existing owner must call pushOwnership prior to the newOwner calling this function
+    /// @dev                         The existing owner must call pushOwnership prior to the newOwner calling this
+    /// function
     /// @param id_                   Market ID
-    function pullOwnership(uint256 id_) external;
+    function pullOwnership(
+        uint256 id_
+    ) external;
 
     /// @notice             Set the auctioneer defaults
     /// @notice             Must be policy
@@ -57,15 +84,23 @@ interface IBondAuctioneer {
     ///                     3. Minimum debt decay interval - minimum amount of time to let debt decay to zero
     ///                     4. Minimum deposit interval - minimum amount of time to wait between deposits
     ///                     5. Minimum market duration - minimum amount of time a market can be created for
-    ///                     6. Minimum debt buffer - the minimum amount of debt over the initial debt to trigger a market shutdown
-    /// @dev                The defaults set here are important to avoid edge cases in market behavior, e.g. a very short market reacts doesn't tune well
+    ///                     6. Minimum debt buffer - the minimum amount of debt over the initial debt to trigger a
+    /// market
+    /// shutdown
+    /// @dev                The defaults set here are important to avoid edge cases in market behavior, e.g. a very
+    /// short
+    /// market reacts doesn't tune well
     /// @dev                Only applies to new markets that are created after the change
-    function setDefaults(uint32[6] memory defaults_) external;
+    function setDefaults(
+        uint32[6] memory defaults_
+    ) external;
 
     /// @notice             Change the status of the auctioneer to allow creation of new markets
     /// @dev                Setting to false and allowing active markets to end will sunset the auctioneer
     /// @param status_      Allow market creation (true) : Disallow market creation (false)
-    function setAllowNewMarkets(bool status_) external;
+    function setAllowNewMarkets(
+        bool status_
+    ) external;
 
     /* ========== VIEW FUNCTIONS ========== */
 
@@ -85,12 +120,17 @@ interface IBondAuctioneer {
     /// @return             Price for market in configured decimals
     //
     // if price is below minimum price, minimum price is returned
-    function marketPrice(uint256 id_) external view returns (uint256);
+    function marketPrice(
+        uint256 id_
+    ) external view returns (uint256);
 
-    /// @notice             Scale value to use when converting between quote token and payout token amounts with marketPrice()
+    /// @notice             Scale value to use when converting between quote token and payout token amounts with
+    /// marketPrice()
     /// @param id_          ID of market
     /// @return             Scaling factor for market in configured decimals
-    function marketScale(uint256 id_) external view returns (uint256);
+    function marketScale(
+        uint256 id_
+    ) external view returns (uint256);
 
     /// @notice             Payout due for amount of quote tokens
     /// @dev                Accounts for debt and control variable decay so it is up to date
@@ -109,19 +149,28 @@ interface IBondAuctioneer {
 
     /// @notice             Does market send payout immediately
     /// @param id_          Market ID to search for
-    function isInstantSwap(uint256 id_) external view returns (bool);
+    function isInstantSwap(
+        uint256 id_
+    ) external view returns (bool);
 
     /// @notice             Is a given market accepting deposits
     /// @param id_          ID of market
-    function isLive(uint256 id_) external view returns (bool);
+    function isLive(
+        uint256 id_
+    ) external view returns (bool);
 
-    /// @notice             Is a given market closing (market meet its conclusion, but owner did not receive unpurchased tokens yet)
+    /// @notice             Is a given market closing (market meet its conclusion, but owner did not receive unpurchased
+    /// tokens yet)
     /// @param id_          ID of market
-    function isClosing(uint256 id_) external view returns (bool);
+    function isClosing(
+        uint256 id_
+    ) external view returns (bool);
 
     /// @notice             Returns the address of the market owner
     /// @param id_          ID of market
-    function ownerOf(uint256 id_) external view returns (address);
+    function ownerOf(
+        uint256 id_
+    ) external view returns (address);
 
     /// @notice             Returns the Teller that services the Auctioneer
     function getTeller() external view returns (IBondTeller);
@@ -130,8 +179,13 @@ interface IBondAuctioneer {
     function getAggregator() external view returns (IBondAggregator);
 
     /// @notice             Returns current capacity of a market
-    function currentCapacity(uint256 id_) external view returns (uint256);
+    function currentCapacity(
+        uint256 id_
+    ) external view returns (uint256);
 
     /// @notice             Returns market conclusion timestamp
-    function getConclusion(uint256 id_) external view returns (uint48);
+    function getConclusion(
+        uint256 id_
+    ) external view returns (uint48);
+
 }

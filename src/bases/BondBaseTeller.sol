@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 pragma solidity 0.8.20;
 
-import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import {IAuthority} from "../interfaces/IAuthority.sol";
-import {IBondTeller} from "../interfaces/IBondTeller.sol";
+import {IAuthority} from "../../lib/interfaces/IAuthority.sol";
+
+import {Auth} from "../../lib/Auth.sol";
+import {FullMath} from "../../lib/FullMath.sol";
 import {IBondAggregator} from "../interfaces/IBondAggregator.sol";
 import {IBondAuctioneer} from "../interfaces/IBondAuctioneer.sol";
-import {Auth} from "../lib/Auth.sol";
-import {FullMath} from "../lib/FullMath.sol";
+import {IBondTeller} from "../interfaces/IBondTeller.sol";
+import {ReentrancyGuard} from "@openzeppelin-contracts/security/ReentrancyGuard.sol";
+import {ERC20} from "@openzeppelin-contracts/token/ERC20/ERC20.sol";
+import {SafeERC20} from "@openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol";
 
 /// @title Bond Teller
 /// @notice Bond Teller Base Contract
@@ -30,6 +31,7 @@ import {FullMath} from "../lib/FullMath.sol";
 ///
 /// @author Oighty, Zeus, Potted Meat, indigo
 abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
+
     using SafeERC20 for ERC20;
     using FullMath for uint256;
 
@@ -47,7 +49,8 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
 
     /* ========== STATE VARIABLES ========== */
 
-    /// @notice Fee paid to a front end operator in basis points (3 decimals). Set by the referrer, must be less than or equal to 5% (5e3).
+    /// @notice Fee paid to a front end operator in basis points (3 decimals). Set by the referrer, must be less than or
+    /// equal to 5% (5e3).
     /// @dev There are some situations where the fees may round down to zero if quantity of baseToken
     ///      is < 1e5 wei (can happen with big price differences on small decimal tokens). This is purely
     ///      a theoretical edge case, as the bond amount would not be practical.
@@ -56,7 +59,8 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
     /// @notice Fee paid to protocol in basis points (3 decimal places).
     uint48 public protocolFee;
 
-    /// @notice 'Create' function fee discount in basis points (3 decimal places). Amount standard fee is reduced by for partners who just want to use the 'create' function to issue bond tokens.
+    /// @notice 'Create' function fee discount in basis points (3 decimal places). Amount standard fee is reduced by for
+    /// partners who just want to use the 'create' function to issue bond tokens.
     uint48 public createFeeDiscount;
 
     uint48 public constant FEE_DECIMALS = 1e5; // one percent equals 1000.
@@ -82,41 +86,49 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
     }
 
     /// @inheritdoc IBondTeller
-    function setBeneficiary(address beneficiary_) external override requiresAuth {
+    function setBeneficiary(
+        address beneficiary_
+    ) external override requiresAuth {
         beneficiary = beneficiary_;
     }
 
     /// @inheritdoc IBondTeller
-    function setReferrerFee(uint48 fee_) external override nonReentrant {
+    function setReferrerFee(
+        uint48 fee_
+    ) external override nonReentrant {
         if (fee_ > 5e3) revert Teller_InvalidParams();
         referrerFees[msg.sender] = fee_;
     }
 
     /// @inheritdoc IBondTeller
-    function setProtocolFee(uint48 fee_) external override requiresAuth {
+    function setProtocolFee(
+        uint48 fee_
+    ) external override requiresAuth {
         if (fee_ > 5e3) revert Teller_InvalidParams();
         protocolFee = fee_;
     }
 
     /// @inheritdoc IBondTeller
-    function setCreateFeeDiscount(uint48 discount_) external override requiresAuth {
+    function setCreateFeeDiscount(
+        uint48 discount_
+    ) external override requiresAuth {
         if (discount_ > protocolFee) revert Teller_InvalidParams();
         createFeeDiscount = discount_;
     }
 
     /// @inheritdoc IBondTeller
-    function closeMarket(uint256 id_) external override nonReentrant {
+    function closeMarket(
+        uint256 id_
+    ) external override nonReentrant {
         IBondAuctioneer auctioneer = _aggregator.getAuctioneer(id_);
         address owner;
         ERC20 payoutToken;
-        (owner, payoutToken, , , ) = auctioneer.getMarketInfoForPurchase(id_);
+        (owner, payoutToken,,,) = auctioneer.getMarketInfoForPurchase(id_);
         uint256 capacity = auctioneer.currentCapacity(id_);
         uint48 conclusion = auctioneer.getConclusion(id_);
 
         // Only owner can close market before conclusion
-        if (conclusion > block.timestamp) {
-            if (msg.sender != owner) revert Teller_NotAuthorized();
-        }
+        if (conclusion > block.timestamp) if (msg.sender != owner) revert Teller_NotAuthorized();
 
         // Return remaining capacity to owner
         if (capacity != 0) {
@@ -132,7 +144,9 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
     }
 
     /// @inheritdoc IBondTeller
-    function getFee(address referrer_) external view returns (uint48) {
+    function getFee(
+        address referrer_
+    ) external view returns (uint48) {
         return protocolFee + referrerFees[referrer_];
     }
 
@@ -161,7 +175,7 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
         {
             IBondAuctioneer auctioneer = _aggregator.getAuctioneer(id_);
             address owner;
-            (owner, payoutToken, quoteToken, vesting, ) = auctioneer.getMarketInfoForPurchase(id_);
+            (owner, payoutToken, quoteToken, vesting,) = auctioneer.getMarketInfoForPurchase(id_);
 
             // Auctioneer handles bond pricing, capacity, and duration
             uint256 amountLessFee = amount_ - toReferrer - toProtocol;
@@ -186,7 +200,7 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
     /// @notice     Handles transfer of funds from user
     function _handleTransfers(uint256 id_, uint256 amount_, uint256 feePaid_) internal {
         // Get info from auctioneer
-        (address owner, , ERC20 quoteToken, , ) = _aggregator.getAuctioneer(id_).getMarketInfoForPurchase(id_);
+        (address owner,, ERC20 quoteToken,,) = _aggregator.getAuctioneer(id_).getMarketInfoForPurchase(id_);
 
         // Calculate amount net of fees
         uint256 amountLessFee = amount_ - feePaid_;
@@ -255,7 +269,8 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
         uint256 expiry_
     ) internal view returns (string memory name, string memory symbol) {
         // Convert a number of days into a human-readable date, courtesy of BokkyPooBah.
-        // Source: https://github.com/bokkypoobah/BokkyPooBahsDateTimeLibrary/blob/master/contracts/BokkyPooBahsDateTimeLibrary.sol
+        // Source:
+        // https://github.com/bokkypoobah/BokkyPooBahsDateTimeLibrary/blob/master/contracts/BokkyPooBahsDateTimeLibrary.sol
 
         uint256 year;
         uint256 month;
@@ -263,10 +278,10 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
         {
             int256 __days = int256(expiry_ / 1 days);
 
-            int256 num1 = __days + 68569 + 2440588; // 2440588 = OFFSET19700101
-            int256 num2 = (4 * num1) / 146097;
-            num1 = num1 - (146097 * num2 + 3) / 4;
-            int256 _year = (4000 * (num1 + 1)) / 1461001;
+            int256 num1 = __days + 68_569 + 2_440_588; // 2440588 = OFFSET19700101
+            int256 num2 = (4 * num1) / 146_097;
+            num1 = num1 - (146_097 * num2 + 3) / 4;
+            int256 _year = (4000 * (num1 + 1)) / 1_461_001;
             num1 = num1 - (1461 * _year) / 4 + 31;
             int256 _month = (80 * num1) / 2447;
             int256 _day = num1 - (2447 * _month) / 80;
@@ -279,7 +294,7 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
             day = uint256(_day);
         }
 
-        string memory yearStr = _uint2str(year % 10000);
+        string memory yearStr = _uint2str(year % 10_000);
         string memory monthStr = month < 10 ? string(abi.encodePacked("0", _uint2str(month))) : _uint2str(month);
         string memory dayStr = day < 10 ? string(abi.encodePacked("0", _uint2str(day))) : _uint2str(day);
 
@@ -298,10 +313,10 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
     // Some fancy math to convert a uint into a string, courtesy of Provable Things.
     // Updated to work with solc 0.8.0.
     // https://github.com/provable-things/ethereum-api/blob/master/provableAPI_0.6.sol
-    function _uint2str(uint256 _i) internal pure returns (string memory) {
-        if (_i == 0) {
-            return "0";
-        }
+    function _uint2str(
+        uint256 _i
+    ) internal pure returns (string memory) {
+        if (_i == 0) return "0";
         uint256 j = _i;
         uint256 len;
         while (j != 0) {
@@ -319,4 +334,5 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
         }
         return string(bstr);
     }
+
 }

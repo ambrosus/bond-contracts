@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 pragma solidity 0.8.20;
 
-import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {IAuthority} from "./interfaces/IAuthority.sol";
-import {IBondAggregator} from "./interfaces/IBondAggregator.sol";
 import {BondBaseTeller} from "./bases/BondBaseTeller.sol";
-import {FullMath} from "./lib/FullMath.sol";
+
+import {FullMath} from "../lib/FullMath.sol";
+import {IAuthority} from "../lib/interfaces/IAuthority.sol";
 import {BondTeller1155Upgradeable} from "./bases/BondTeller1155Upgradeable.sol";
+import {IBondAggregator} from "./interfaces/IBondAggregator.sol";
+import {ERC20} from "@openzeppelin-contracts/token/ERC20/ERC20.sol";
+import {SafeERC20} from "@openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol";
 
 /// @title Bond Fixed Expiry Teller
 /// @notice Bond Fixed Expiry Teller Contract
@@ -26,6 +27,7 @@ import {BondTeller1155Upgradeable} from "./bases/BondTeller1155Upgradeable.sol";
 ///
 /// @author Oighty, Zeus, Potted Meat, indigo
 contract BondFixedExpiryTeller is BondTeller1155Upgradeable {
+
     using SafeERC20 for ERC20;
 
     /* ========== CONSTRUCTOR ========== */
@@ -40,12 +42,7 @@ contract BondFixedExpiryTeller is BondTeller1155Upgradeable {
         address guardian_,
         IAuthority authority_
     ) public initializer {
-        __BondFixedExpiryTeller_init(
-            protocol_,
-            aggregator_,
-            guardian_,
-            authority_
-        );
+        __BondFixedExpiryTeller_init(protocol_, aggregator_, guardian_, authority_);
     }
 
     function __BondFixedExpiryTeller_init(
@@ -54,12 +51,7 @@ contract BondFixedExpiryTeller is BondTeller1155Upgradeable {
         address guardian_,
         IAuthority authority_
     ) public onlyInitializing {
-        __BondTeller1155_init(
-            protocol_, 
-            aggregator_,
-            guardian_, 
-            authority_
-        );
+        __BondTeller1155_init(protocol_, aggregator_, guardian_, authority_);
     }
     /* ========== PURCHASE ========== */
 
@@ -94,9 +86,7 @@ contract BondFixedExpiryTeller is BondTeller1155Upgradeable {
             uint256 tokenId = getTokenId(payoutToken_, expiry);
 
             // Create new bond token if it doesn't exist yet
-            if (!tokenMetadata[tokenId].active) {
-                _deploy(tokenId, payoutToken_, expiry);
-            }
+            if (!tokenMetadata[tokenId].active) _deploy(tokenId, payoutToken_, expiry);
 
             // Mint bond token to recipient
             _mintToken(recipient_, tokenId, payout_);
@@ -110,4 +100,5 @@ contract BondFixedExpiryTeller is BondTeller1155Upgradeable {
             }
         }
     }
+
 }

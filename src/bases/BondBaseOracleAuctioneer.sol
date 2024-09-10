@@ -1,47 +1,49 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 pragma solidity 0.8.20;
 
-import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import {IAuthority} from "../interfaces/IAuthority.sol";
+import {FullMath} from "../../lib/FullMath.sol";
+import {IAuthority} from "../../lib/interfaces/IAuthority.sol";
 import {IBondAggregator} from "../interfaces/IBondAggregator.sol";
 import {IBondOracle} from "../interfaces/IBondOracle.sol";
 import {IBondTeller} from "../interfaces/IBondTeller.sol";
-import {FullMath} from "../lib/FullMath.sol";
+import {ERC20} from "@openzeppelin-contracts/token/ERC20/ERC20.sol";
 
 import {BondBaseAuctioneer} from "./BondBaseAuctioneer.sol";
+
 abstract contract BondBaseOracleAuctioneer is BondBaseAuctioneer {
-  using FullMath for uint256;
 
-  error Auctioneer_OraclePriceZero();
+    using FullMath for uint256;
 
-  /* ========== INTERNAL VIEW FUNCTIONS ========== */
+    error Auctioneer_OraclePriceZero();
 
-  /// @notice         Helper function to calculate number of price decimals based on the value returned from the price feed.
-  /// @param price_   The price to calculate the number of decimals for
-  /// @return         The number of decimals
-  function _getPriceDecimals(uint256 price_, uint8 feedDecimals_) internal pure returns (int8) {
-      int8 decimals;
-      while (price_ >= 10) {
-          price_ = price_ / 10;
-          decimals++;
-      }
+    /* ========== INTERNAL VIEW FUNCTIONS ========== */
 
-      // Subtract the stated decimals from the calculated decimals to get the relative price decimals.
-      // Required to do it this way vs. normalizing at the beginning since price decimals can be negative.
-      return decimals - int8(feedDecimals_);
-  }
+    /// @notice         Helper function to calculate number of price decimals based on the value returned from the price
+    /// feed.
+    /// @param price_   The price to calculate the number of decimals for
+    /// @return         The number of decimals
+    function _getPriceDecimals(uint256 price_, uint8 feedDecimals_) internal pure returns (int8) {
+        int8 decimals;
+        while (price_ >= 10) {
+            price_ = price_ / 10;
+            decimals++;
+        }
 
-  constructor(
-    IBondTeller teller_, 
-    IBondAggregator aggregator_,
-    address guardian_,
-    IAuthority authority_
-  ) BondBaseAuctioneer(teller_, aggregator_, guardian_, authority_) 
-  {}
+        // Subtract the stated decimals from the calculated decimals to get the relative price decimals.
+        // Required to do it this way vs. normalizing at the beginning since price decimals can be negative.
+        return decimals - int8(feedDecimals_);
+    }
 
-  /* ========== INTERNAL FUNCTIONS ========== */
+    constructor(
+        IBondTeller teller_,
+        IBondAggregator aggregator_,
+        address guardian_,
+        IAuthority authority_
+    ) BondBaseAuctioneer(teller_, aggregator_, guardian_, authority_) {}
 
-  function _validateOracle(
+    /* ========== INTERNAL FUNCTIONS ========== */
+
+    function _validateOracle(
         uint256 id_,
         IBondOracle oracle_,
         ERC20 quoteToken_,
@@ -107,9 +109,11 @@ abstract contract BondBaseOracleAuctioneer is BondBaseAuctioneer {
         // Unit to scale calculation for this market by to ensure reasonable values
         // for price, debt, and control variable without under/overflows.
         //
-        // scaleAdjustment should be equal to (payoutDecimals - quoteDecimals) - ((payoutPriceDecimals - quotePriceDecimals) / 2)
+        // scaleAdjustment should be equal to (payoutDecimals - quoteDecimals) - ((payoutPriceDecimals -
+        // quotePriceDecimals) / 2)
         // scale = 10^(36 + scaleAdjustment);
-        // TODO: Check if this is correct calculation (priceDecimals / 2 instead of (payoutPriceDecimals - quotePriceDecimals) / 2)
+        // TODO: Check if this is correct calculation (priceDecimals / 2 instead of (payoutPriceDecimals -
+        // quotePriceDecimals) / 2)
         uint256 scale = 10 ** uint8(36 + int8(payoutTokenDecimals) - int8(quoteTokenDecimals) - priceDecimals / 2);
 
         return (currentPrice * oracleConversion, oracleConversion, scale);

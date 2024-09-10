@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 pragma solidity 0.8.20;
 
-import {IAuthority} from "./interfaces/IAuthority.sol";
+import {IAuthority} from "../lib/interfaces/IAuthority.sol";
+import {BondBaseOSDA} from "./bases/BondBaseOSDA.sol";
 import {IBondAggregator} from "./interfaces/IBondAggregator.sol";
 import {IBondTeller} from "./interfaces/IBondTeller.sol";
-import {BondBaseOSDA} from "./bases/BondBaseOSDA.sol";
 
 /// @title Bond Fixed-Term Oracle-based Sequential Dutch Auctioneer
 /// @notice Bond Fixed-Term Oracle-based Sequential Dutch Auctioneer Contract
@@ -22,6 +22,7 @@ import {BondBaseOSDA} from "./bases/BondBaseOSDA.sol";
 ///
 /// @author Oighty, Zeus, Potted Meat, indigo
 contract BondFixedTermOSDA is BondBaseOSDA {
+
     /* ========== CONSTRUCTOR ========== */
     constructor(
         IBondTeller teller_,
@@ -32,15 +33,19 @@ contract BondFixedTermOSDA is BondBaseOSDA {
 
     /* ========== MARKET FUNCTIONS ========== */
     /// @inheritdoc BondBaseOSDA
-    function createMarket(bytes calldata params_) external payable override returns (uint256) {
+    function createMarket(
+        bytes calldata params_
+    ) external payable override returns (uint256) {
         // Decode params into the struct type expected by this auctioneer
         MarketParams memory params = abi.decode(params_, (MarketParams));
 
         // Check that the vesting parameter is valid for a fixed-term market
-        if (params.vesting != 0 && (params.vesting < 1 minutes || params.vesting > MAX_FIXED_TERM))
+        if (params.vesting != 0 && (params.vesting < 1 minutes || params.vesting > MAX_FIXED_TERM)) {
             revert Auctioneer_InvalidParams();
+        }
 
         // Create market and return market ID
         return _createMarket(params);
     }
+
 }

@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 pragma solidity 0.8.20;
 
-import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import {Auth} from "./lib/Auth.sol";
-import {IAuthority} from "./interfaces/IAuthority.sol";
+import {IAuthority} from "../lib/interfaces/IAuthority.sol";
 import {IBondAggregator} from "./interfaces/IBondAggregator.sol";
-import {IBondTeller} from "./interfaces/IBondTeller.sol";
-import {IBondAuctioneer} from "./interfaces/IBondAuctioneer.sol";
 
-import {FullMath} from "./lib/FullMath.sol";
+import {Auth} from "../lib/Auth.sol";
+import {IBondAuctioneer} from "./interfaces/IBondAuctioneer.sol";
+import {IBondTeller} from "./interfaces/IBondTeller.sol";
+import {ERC20} from "@openzeppelin-contracts/token/ERC20/ERC20.sol";
+
+import {FullMath} from "../lib/FullMath.sol";
 
 /// @title Bond Aggregator
 /// @notice Bond Aggregator Contract
@@ -28,6 +29,7 @@ import {FullMath} from "./lib/FullMath.sol";
 ///
 /// @author Oighty, Zeus, Potted Meat, indigo
 contract BondAggregator is IBondAggregator, Auth {
+
     using FullMath for uint256;
 
     /* ========== ERRORS ========== */
@@ -59,7 +61,9 @@ contract BondAggregator is IBondAggregator, Auth {
     constructor(address guardian_, IAuthority authority_) Auth(guardian_, authority_) {}
 
     /// @inheritdoc IBondAggregator
-    function registerAuctioneer(IBondAuctioneer auctioneer_) external requiresAuth {
+    function registerAuctioneer(
+        IBondAuctioneer auctioneer_
+    ) external requiresAuth {
         // Restricted to authorized addresses
 
         // Check that the auctioneer is not already registered
@@ -83,18 +87,24 @@ contract BondAggregator is IBondAggregator, Auth {
     /* ========== VIEW FUNCTIONS ========== */
 
     /// @inheritdoc IBondAggregator
-    function getAuctioneer(uint256 id_) external view returns (IBondAuctioneer) {
+    function getAuctioneer(
+        uint256 id_
+    ) external view returns (IBondAuctioneer) {
         return marketsToAuctioneers[id_];
     }
 
     /// @inheritdoc IBondAggregator
-    function marketPrice(uint256 id_) public view override returns (uint256) {
+    function marketPrice(
+        uint256 id_
+    ) public view override returns (uint256) {
         IBondAuctioneer auctioneer = marketsToAuctioneers[id_];
         return auctioneer.marketPrice(id_);
     }
 
     /// @inheritdoc IBondAggregator
-    function marketScale(uint256 id_) external view override returns (uint256) {
+    function marketScale(
+        uint256 id_
+    ) external view override returns (uint256) {
         IBondAuctioneer auctioneer = marketsToAuctioneers[id_];
         return auctioneer.marketScale(id_);
     }
@@ -112,19 +122,25 @@ contract BondAggregator is IBondAggregator, Auth {
     }
 
     /// @inheritdoc IBondAggregator
-    function isInstantSwap(uint256 id_) external view returns (bool) {
+    function isInstantSwap(
+        uint256 id_
+    ) external view returns (bool) {
         IBondAuctioneer auctioneer = marketsToAuctioneers[id_];
         return auctioneer.isInstantSwap(id_);
     }
 
     /// @inheritdoc IBondAggregator
-    function isLive(uint256 id_) public view override returns (bool) {
+    function isLive(
+        uint256 id_
+    ) public view override returns (bool) {
         IBondAuctioneer auctioneer = marketsToAuctioneers[id_];
         return auctioneer.isLive(id_);
     }
 
     /// @inheritdoc IBondAggregator
-    function isClosing(uint256 id_) public view override returns (bool) {
+    function isClosing(
+        uint256 id_
+    ) public view override returns (bool) {
         IBondAuctioneer auctioneer = marketsToAuctioneers[id_];
         return auctioneer.isClosing(id_);
     }
@@ -186,7 +202,7 @@ contract BondAggregator is IBondAggregator, Auth {
         uint256 len = forPayout.length;
         for (uint256 i; i < len; ++i) {
             auctioneer = marketsToAuctioneers[forPayout[i]];
-            (, , quoteToken, , ) = auctioneer.getMarketInfoForPurchase(forPayout[i]);
+            (,, quoteToken,,) = auctioneer.getMarketInfoForPurchase(forPayout[i]);
             if (isLive(forPayout[i]) && address(quoteToken) == quote_) ++count;
         }
 
@@ -195,7 +211,7 @@ contract BondAggregator is IBondAggregator, Auth {
 
         for (uint256 i; i < len; ++i) {
             auctioneer = marketsToAuctioneers[forPayout[i]];
-            (, , quoteToken, , ) = auctioneer.getMarketInfoForPurchase(forPayout[i]);
+            (,, quoteToken,,) = auctioneer.getMarketInfoForPurchase(forPayout[i]);
             if (isLive(forPayout[i]) && address(quoteToken) == quote_) {
                 ids[count] = forPayout[i];
                 ++count;
@@ -224,7 +240,7 @@ contract BondAggregator is IBondAggregator, Auth {
         IBondAuctioneer auctioneer;
         for (uint256 i; i < len; ++i) {
             auctioneer = marketsToAuctioneers[ids[i]];
-            (, , , vesting, maxPayout) = auctioneer.getMarketInfoForPurchase(ids[i]);
+            (,,, vesting, maxPayout) = auctioneer.getMarketInfoForPurchase(ids[i]);
 
             uint256 expiry = (vesting <= MAX_FIXED_TERM) ? block.timestamp + vesting : vesting;
 
@@ -255,9 +271,7 @@ contract BondAggregator is IBondAggregator, Auth {
         IBondAuctioneer auctioneer;
         for (uint256 i = firstIndex_; i < lastIndex_; ++i) {
             auctioneer = marketsToAuctioneers[i];
-            if (auctioneer.isLive(i) && auctioneer.ownerOf(i) == owner_) {
-                ++count;
-            }
+            if (auctioneer.isLive(i) && auctioneer.ownerOf(i) == owner_) ++count;
         }
 
         uint256[] memory ids = new uint256[](count);
@@ -292,14 +306,19 @@ contract BondAggregator is IBondAggregator, Auth {
     }
 
     /// @inheritdoc IBondAggregator
-    function getTeller(uint256 id_) external view returns (IBondTeller) {
+    function getTeller(
+        uint256 id_
+    ) external view returns (IBondTeller) {
         IBondAuctioneer auctioneer = marketsToAuctioneers[id_];
         return auctioneer.getTeller();
     }
 
     /// @inheritdoc IBondAggregator
-    function currentCapacity(uint256 id_) external view returns (uint256) {
+    function currentCapacity(
+        uint256 id_
+    ) external view returns (uint256) {
         IBondAuctioneer auctioneer = marketsToAuctioneers[id_];
         return auctioneer.currentCapacity(id_);
     }
+
 }

@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity >=0.8.0;
 
-import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IBondAuctioneer} from "../interfaces/IBondAuctioneer.sol";
+import {ERC20} from "@openzeppelin-contracts/token/ERC20/ERC20.sol";
 
 interface IBondFPA is IBondAuctioneer {
+
     /// @notice Information pertaining to bond market
     struct BondMarket {
         address owner; // market owner. sends payout tokens, receives quote tokens (defaults to creator)
@@ -28,32 +29,45 @@ interface IBondFPA is IBondAuctioneer {
     /// @notice             Parameters to create a new bond market
     /// @dev                Note price should be passed in a specific format:
     ///                     formatted price = (payoutPriceCoefficient / quotePriceCoefficient)
-    ///                             * 10**(36 + scaleAdjustment + quoteDecimals - payoutDecimals + payoutPriceDecimals - quotePriceDecimals)
+    ///                             * 10**(36 + scaleAdjustment + quoteDecimals - payoutDecimals + payoutPriceDecimals -
+    /// quotePriceDecimals)
     ///                     where:
     ///                         payoutDecimals - Number of decimals defined for the payoutToken in its ERC20 contract
     ///                         quoteDecimals - Number of decimals defined for the quoteToken in its ERC20 contract
-    ///                         payoutPriceCoefficient - The coefficient of the payoutToken price in scientific notation (also known as the significant digits)
-    ///                         payoutPriceDecimals - The significand of the payoutToken price in scientific notation (also known as the base ten exponent)
-    ///                         quotePriceCoefficient - The coefficient of the quoteToken price in scientific notation (also known as the significant digits)
-    ///                         quotePriceDecimals - The significand of the quoteToken price in scientific notation (also known as the base ten exponent)
+    ///                         payoutPriceCoefficient - The coefficient of the payoutToken price in scientific notation
+    /// (also known as the significant digits)
+    ///                         payoutPriceDecimals - The significand of the payoutToken price in scientific notation
+    /// (also known as the base ten exponent)
+    ///                         quotePriceCoefficient - The coefficient of the quoteToken price in scientific notation
+    /// (also known as the significant digits)
+    ///                         quotePriceDecimals - The significand of the quoteToken price in scientific notation
+    /// (also
+    /// known as the base ten exponent)
     ///                         scaleAdjustment - see below
-    ///                         * In the above definitions, the "prices" need to have the same unit of account (i.e. both in OHM, $, ETH, etc.)
+    ///                         * In the above definitions, the "prices" need to have the same unit of account (i.e. both
+    /// in OHM, $, ETH, etc.)
     ///                         If price is not provided in this format, the market will not behave as intended.
     /// @param params_      Encoded bytes array, with the following elements
     /// @dev                    0. Payout Token (token paid out)
     /// @dev                    1. Quote Token (token to be received)
     /// @dev                    2. Capacity in payout token
     /// @dev                    3. Formatted price (see note above)
-    /// @dev                    4. Deposit interval (seconds). Desired frequency of bonds. Used to calculate max payout of market (maxPayout = length / depositInterval * capacity).
+    /// @dev                    4. Deposit interval (seconds). Desired frequency of bonds. Used to calculate max payout
+    /// of
+    /// market (maxPayout = length / depositInterval * capacity).
     /// @dev                    5. Is fixed term ? Vesting length (seconds) : Vesting expiry (timestamp).
     /// @dev                        A 'vesting' param longer than 50 years is considered a timestamp for fixed expiry.
     /// @dev                    6. Start Time of the Market (timestamp) - Allows starting a market in the future.
-    /// @dev                        If a start time is provided, the txn must be sent prior to the start time (functions as a deadline).
+    /// @dev                        If a start time is provided, the txn must be sent prior to the start time (functions
+    /// as a deadline).
     /// @dev                        If start time is not provided (i.e. 0), the market will start immediately.
     /// @dev                    7. Market Duration (seconds) - Duration of the market in seconds.
-    /// @dev                    8. Market scaling factor adjustment, ranges from -24 to +24 within the configured market bounds.
-    /// @dev                        Should be calculated as: (payoutDecimals - quoteDecimals) - ((payoutPriceDecimals - quotePriceDecimals) / 2)
-    /// @dev                        Providing a scaling factor adjustment that doesn't follow this formula could lead to under or overflow errors in the market.
+    /// @dev                    8. Market scaling factor adjustment, ranges from -24 to +24 within the configured market
+    /// bounds.
+    /// @dev                        Should be calculated as: (payoutDecimals - quoteDecimals) - ((payoutPriceDecimals -
+    /// quotePriceDecimals) / 2)
+    /// @dev                        Providing a scaling factor adjustment that doesn't follow this formula could lead to
+    /// under or overflow errors in the market.
     /// @return                 ID of new bond market
     struct MarketParams {
         ERC20 payoutToken;
@@ -70,12 +84,16 @@ interface IBondFPA is IBondAuctioneer {
     /// @notice Set the minimum market duration
     /// @notice Access controlled
     /// @param duration_ Minimum market duration in seconds
-    function setMinMarketDuration(uint48 duration_) external;
+    function setMinMarketDuration(
+        uint48 duration_
+    ) external;
 
     /// @notice Set the minimum deposit interval
     /// @notice Access controlled
     /// @param depositInterval_ Minimum deposit interval in seconds
-    function setMinDepositInterval(uint48 depositInterval_) external;
+    function setMinDepositInterval(
+        uint48 depositInterval_
+    ) external;
 
     /* ========== VIEW FUNCTIONS ========== */
 
@@ -90,11 +108,17 @@ interface IBondFPA is IBondAuctioneer {
     // p = price
     // f_p = fixed price provided on creation
     //
-    function marketPrice(uint256 id_) external view override returns (uint256);
+    function marketPrice(
+        uint256 id_
+    ) external view override returns (uint256);
 
     /// @notice             Calculate max payout of the market in payout tokens
-    /// @dev                Returns a dynamically calculated payout or the maximum set by the creator, whichever is less.
+    /// @dev                Returns a dynamically calculated payout or the maximum set by the creator, whichever is
+    /// less.
     /// @param id_          ID of market
     /// @return             Current max payout for the market in payout tokens
-    function maxPayout(uint256 id_) external view returns (uint256);
+    function maxPayout(
+        uint256 id_
+    ) external view returns (uint256);
+
 }

@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity >=0.8.0;
 
-import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IBondAuctioneer} from "../interfaces/IBondAuctioneer.sol";
+import {ERC20} from "@openzeppelin-contracts/token/ERC20/ERC20.sol";
 
 interface IBondSDA is IBondAuctioneer {
+
     /// @notice Main information pertaining to bond market
     struct BondMarket {
         address owner; // market owner. sends payout tokens, receives quote tokens (defaults to creator)
@@ -29,7 +30,8 @@ interface IBondSDA is IBondAuctioneer {
     }
 
     /// @notice Data needed for tuning bond market
-    /// @dev Durations are stored in uint32 (not int32) and timestamps are stored in uint48, so is not subject to Y2K38 overflow
+    /// @dev Durations are stored in uint32 (not int32) and timestamps are stored in uint48, so is not subject to Y2K38
+    /// overflow
     struct BondMetadata {
         uint48 lastTune; // last timestamp when control variable was tuned
         uint48 lastDecay; // last timestamp when market was created and debt was decayed
@@ -53,16 +55,23 @@ interface IBondSDA is IBondAuctioneer {
     /// @notice             Parameters to create a new bond market
     /// @dev                Note price should be passed in a specific format:
     ///                     formatted price = (payoutPriceCoefficient / quotePriceCoefficient)
-    ///                             * 10**(36 + scaleAdjustment + quoteDecimals - payoutDecimals + payoutPriceDecimals - quotePriceDecimals)
+    ///                             * 10**(36 + scaleAdjustment + quoteDecimals - payoutDecimals + payoutPriceDecimals -
+    /// quotePriceDecimals)
     ///                     where:
     ///                         payoutDecimals - Number of decimals defined for the payoutToken in its ERC20 contract
     ///                         quoteDecimals - Number of decimals defined for the quoteToken in its ERC20 contract
-    ///                         payoutPriceCoefficient - The coefficient of the payoutToken price in scientific notation (also known as the significant digits)
-    ///                         payoutPriceDecimals - The significand of the payoutToken price in scientific notation (also known as the base ten exponent)
-    ///                         quotePriceCoefficient - The coefficient of the quoteToken price in scientific notation (also known as the significant digits)
-    ///                         quotePriceDecimals - The significand of the quoteToken price in scientific notation (also known as the base ten exponent)
+    ///                         payoutPriceCoefficient - The coefficient of the payoutToken price in scientific notation
+    /// (also known as the significant digits)
+    ///                         payoutPriceDecimals - The significand of the payoutToken price in scientific notation
+    /// (also known as the base ten exponent)
+    ///                         quotePriceCoefficient - The coefficient of the quoteToken price in scientific notation
+    /// (also known as the significant digits)
+    ///                         quotePriceDecimals - The significand of the quoteToken price in scientific notation
+    /// (also
+    /// known as the base ten exponent)
     ///                         scaleAdjustment - see below
-    ///                         * In the above definitions, the "prices" need to have the same unit of account (i.e. both in OHM, $, ETH, etc.)
+    ///                         * In the above definitions, the "prices" need to have the same unit of account (i.e. both
+    /// in OHM, $, ETH, etc.)
     ///                         If price is not provided in this format, the market will not behave as intended.
     /// @param params_      Encoded bytes array, with the following elements
     /// @dev                    0. Payout Token (token paid out)
@@ -70,24 +79,39 @@ interface IBondSDA is IBondAuctioneer {
     /// @dev                    2. Capacity in payout token
     /// @dev                    3. Formatted initial price (see note above)
     /// @dev                    4. Formatted minimum price (see note above)
-    /// @dev                    5. Debt buffer. Percent with 3 decimals. Percentage over the initial debt to allow the market to accumulate at anyone time.
-    /// @dev                       Works as a circuit breaker for the market in case external conditions incentivize massive buying (e.g. stablecoin depeg).
+    /// @dev                    5. Debt buffer. Percent with 3 decimals. Percentage over the initial debt to allow the
+    /// market to accumulate at anyone time.
+    /// @dev                       Works as a circuit breaker for the market in case external conditions incentivize
+    /// massive buying (e.g. stablecoin depeg).
     /// @dev                       Minimum is the greater of 10% or initial max payout as a percentage of capacity.
-    /// @dev                       If the value is too small, the market will not be able function normally and close prematurely.
-    /// @dev                       If the value is too large, the market will not circuit break when intended. The value must be > 10% but can exceed 100% if desired.
-    /// @dev                       A good heuristic to calculate a debtBuffer with is to determine the amount of capacity that you think is reasonable to be expended
-    /// @dev                       in a short duration as a percent, e.g. 25%. Then a reasonable debtBuffer would be: 0.25 * 1e3 * decayInterval / marketDuration
-    /// @dev                       where decayInterval = max(3 days, 5 * depositInterval) and marketDuration = conclusion - creation time.
+    /// @dev                       If the value is too small, the market will not be able function normally and close
+    /// prematurely.
+    /// @dev                       If the value is too large, the market will not circuit break when intended. The value
+    /// must be > 10% but can exceed 100% if desired.
+    /// @dev                       A good heuristic to calculate a debtBuffer with is to determine the amount of
+    /// capacity
+    /// that you think is reasonable to be expended
+    /// @dev                       in a short duration as a percent, e.g. 25%. Then a reasonable debtBuffer would be:
+    /// 0.25
+    /// * 1e3 * decayInterval / marketDuration
+    /// @dev                       where decayInterval = max(3 days, 5 * depositInterval) and marketDuration =
+    /// conclusion
+    /// - creation time.
     /// @dev                    6. Is fixed term ? Vesting length (seconds) : Vesting expiry (timestamp).
     /// @dev                        A 'vesting' param longer than 50 years is considered a timestamp for fixed expiry.
     /// @dev                    7. Start Time of the Market (timestamp) - Allows starting a market in the future.
-    /// @dev                        If a start time is provided, the txn must be sent prior to the start time (functions as a deadline).
+    /// @dev                        If a start time is provided, the txn must be sent prior to the start time (functions
+    /// as a deadline).
     /// @dev                        If start time is not provided (i.e. 0), the market will start immediately.
     /// @dev                    8. Market Duration (seconds) - Duration of the market in seconds.
     /// @dev                    9. Deposit interval (seconds)
-    /// @dev                    10. Market scaling factor adjustment, ranges from -24 to +24 within the configured market bounds.
-    /// @dev                        Should be calculated as: (payoutDecimals - quoteDecimals) - ((payoutPriceDecimals - quotePriceDecimals) / 2)
-    /// @dev                        Providing a scaling factor adjustment that doesn't follow this formula could lead to under or overflow errors in the market.
+    /// @dev                    10. Market scaling factor adjustment, ranges from -24 to +24 within the configured
+    /// market
+    /// bounds.
+    /// @dev                        Should be calculated as: (payoutDecimals - quoteDecimals) - ((payoutPriceDecimals -
+    /// quotePriceDecimals) / 2)
+    /// @dev                        Providing a scaling factor adjustment that doesn't follow this formula could lead to
+    /// under or overflow errors in the market.
     /// @return                 ID of new bond market
     struct MarketParams {
         ERC20 payoutToken;
@@ -127,23 +151,33 @@ interface IBondSDA is IBondAuctioneer {
     //
     // if price is below minimum price, minimum price is returned
     // this is enforced on deposits by manipulating total debt (see _decay())
-    function marketPrice(uint256 id_) external view override returns (uint256);
+    function marketPrice(
+        uint256 id_
+    ) external view override returns (uint256);
 
     /// @notice             Calculate debt factoring in decay
     /// @dev                Accounts for debt decay since last deposit
     /// @param id_          ID of market
     /// @return             Current debt for market in payout token decimals
-    function currentDebt(uint256 id_) external view returns (uint256);
+    function currentDebt(
+        uint256 id_
+    ) external view returns (uint256);
 
     /// @notice             Up to date control variable
     /// @dev                Accounts for control variable adjustment
     /// @param id_          ID of market
     /// @return             Control variable for market in payout token decimals
-    function currentControlVariable(uint256 id_) external view returns (uint256);
+    function currentControlVariable(
+        uint256 id_
+    ) external view returns (uint256);
 
     /// @notice             Calculate max payout of the market in payout tokens
-    /// @dev                Returns a dynamically calculated payout or the maximum set by the creator, whichever is less.
+    /// @dev                Returns a dynamically calculated payout or the maximum set by the creator, whichever is
+    /// less.
     /// @param id_          ID of market
     /// @return             Current max payout for the market in payout tokens
-    function maxPayout(uint256 id_) external view returns (uint256);
+    function maxPayout(
+        uint256 id_
+    ) external view returns (uint256);
+
 }

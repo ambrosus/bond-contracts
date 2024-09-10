@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 pragma solidity 0.8.20;
 
-import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {BondBaseTeller} from "./BondBaseTeller.sol";
+import {ERC1155} from "../../lib/ERC1155.sol";
+import {FullMath} from "../../lib/FullMath.sol";
+import {IAuthority} from "../../lib/interfaces/IAuthority.sol";
 import {IBondAggregator} from "../interfaces/IBondAggregator.sol";
-import {IAuthority} from "../interfaces/IAuthority.sol";
 import {IBondTeller1155} from "../interfaces/IBondTeller1155.sol";
-import {FullMath} from "../lib/FullMath.sol";
-import {ERC1155} from "../lib/ERC1155.sol";
+import {BondBaseTeller} from "./BondBaseTeller.sol";
+import {ERC20} from "@openzeppelin-contracts/token/ERC20/ERC20.sol";
+import {SafeERC20} from "@openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol";
 
 /// @title Bond Fixed Term Teller
 /// @notice Bond Fixed Term Teller Contract
@@ -27,6 +27,7 @@ import {ERC1155} from "../lib/ERC1155.sol";
 ///
 /// @author Oighty, Zeus, Potted Meat, indigo
 abstract contract BondTeller1155 is BondBaseTeller, IBondTeller1155, ERC1155 {
+
     using SafeERC20 for ERC20;
     using FullMath for uint256;
 
@@ -150,9 +151,7 @@ abstract contract BondTeller1155 is BondBaseTeller, IBondTeller1155, ERC1155 {
     function deploy(ERC20 underlying_, uint48 expiry_) external override nonReentrant returns (uint256) {
         uint256 tokenId = getTokenId(underlying_, expiry_);
         // Only creates token if it does not exist
-        if (!tokenMetadata[tokenId].active) {
-            _deploy(tokenId, underlying_, expiry_);
-        }
+        if (!tokenMetadata[tokenId].active) _deploy(tokenId, underlying_, expiry_);
         return tokenId;
     }
 
@@ -172,9 +171,7 @@ abstract contract BondTeller1155 is BondBaseTeller, IBondTeller1155, ERC1155 {
         // If token is native than decimals equal to 18,
         // otherwise get decimals from token contrtact
         uint8 decimals = 18;
-        if (address(underlying_) != address(0)) {
-            decimals = uint8(underlying_.decimals());
-        }
+        if (address(underlying_) != address(0)) decimals = uint8(underlying_.decimals());
 
         // Store token metadata
         tokenMetadata[tokenId_] = TokenMetadata(true, tokenId_, underlying_, decimals, expiry, 0);
@@ -200,9 +197,6 @@ abstract contract BondTeller1155 is BondBaseTeller, IBondTeller1155, ERC1155 {
         _burn(from_, tokenId_, amount_);
     }
 
-
-
-
     /* ========== TOKEN NAMING ========== */
 
     /// @inheritdoc IBondTeller1155
@@ -214,9 +208,12 @@ abstract contract BondTeller1155 is BondBaseTeller, IBondTeller1155, ERC1155 {
     }
 
     /// @inheritdoc IBondTeller1155
-    function getTokenNameAndSymbol(uint256 tokenId_) external view override returns (string memory, string memory) {
+    function getTokenNameAndSymbol(
+        uint256 tokenId_
+    ) external view override returns (string memory, string memory) {
         TokenMetadata memory meta = tokenMetadata[tokenId_];
         (string memory name, string memory symbol) = _getNameAndSymbol(meta.underlying, meta.expiry);
         return (name, symbol);
     }
+
 }

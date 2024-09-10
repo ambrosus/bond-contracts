@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity >=0.8.0;
 
-import {Auth} from "./lib/Auth.sol";
-import {IAuthority} from "./interfaces/IAuthority.sol";
+import {Auth} from "../lib/Auth.sol";
+import {IAuthority} from "../lib/interfaces/IAuthority.sol";
 
 /// @notice Role based Authority that supports up to 256 roles.
 /// @author Solmate (https://github.com/transmissions11/solmate/blob/main/src/auth/authorities/RolesAuthority.sol)
 /// @author Modified from Dappsys (https://github.com/dapphub/ds-roles/blob/master/src/roles.sol)
 contract RolesAuthority is Auth, IAuthority {
+
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
     //////////////////////////////////////////////////////////////*/
@@ -50,25 +51,16 @@ contract RolesAuthority is Auth, IAuthority {
                            AUTHORIZATION LOGIC
     //////////////////////////////////////////////////////////////*/
 
-    function canCall(
-        address user,
-        address target,
-        bytes4 functionSig
-    ) public view virtual override returns (bool) {
-        return
-            isCapabilityPublic[target][functionSig] ||
-            bytes32(0) != getUserRoles[user] & getRolesWithCapability[target][functionSig];
+    function canCall(address user, address target, bytes4 functionSig) public view virtual override returns (bool) {
+        return isCapabilityPublic[target][functionSig]
+            || bytes32(0) != getUserRoles[user] & getRolesWithCapability[target][functionSig];
     }
 
     /*//////////////////////////////////////////////////////////////
                    ROLE CAPABILITY CONFIGURATION LOGIC
     //////////////////////////////////////////////////////////////*/
 
-    function setPublicCapability(
-        address target,
-        bytes4 functionSig,
-        bool enabled
-    ) public virtual requiresAuth {
+    function setPublicCapability(address target, bytes4 functionSig, bool enabled) public virtual requiresAuth {
         isCapabilityPublic[target][functionSig] = enabled;
 
         emit PublicCapabilityUpdated(target, functionSig, enabled);
@@ -80,11 +72,8 @@ contract RolesAuthority is Auth, IAuthority {
         bytes4 functionSig,
         bool enabled
     ) public virtual requiresAuth {
-        if (enabled) {
-            getRolesWithCapability[target][functionSig] |= bytes32(1 << role);
-        } else {
-            getRolesWithCapability[target][functionSig] &= ~bytes32(1 << role);
-        }
+        if (enabled) getRolesWithCapability[target][functionSig] |= bytes32(1 << role);
+        else getRolesWithCapability[target][functionSig] &= ~bytes32(1 << role);
 
         emit RoleCapabilityUpdated(role, target, functionSig, enabled);
     }
@@ -93,17 +82,11 @@ contract RolesAuthority is Auth, IAuthority {
                        USER ROLE ASSIGNMENT LOGIC
     //////////////////////////////////////////////////////////////*/
 
-    function setUserRole(
-        address user,
-        uint8 role,
-        bool enabled
-    ) public virtual requiresAuth {
-        if (enabled) {
-            getUserRoles[user] |= bytes32(1 << role);
-        } else {
-            getUserRoles[user] &= ~bytes32(1 << role);
-        }
+    function setUserRole(address user, uint8 role, bool enabled) public virtual requiresAuth {
+        if (enabled) getUserRoles[user] |= bytes32(1 << role);
+        else getUserRoles[user] &= ~bytes32(1 << role);
 
         emit UserRoleUpdated(user, role, enabled);
     }
+
 }

@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 pragma solidity 0.8.20;
 
-import {Pausable} from "@openzeppelin/contracts/security/Pausable.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import {Auth} from "../lib/Auth.sol";
-import {IAuthority} from "../interfaces/IAuthority.sol";
+import {Auth} from "../../lib/Auth.sol";
+import {IAuthority} from "../../lib/interfaces/IAuthority.sol";
 import {IBondAggregator} from "../interfaces/IBondAggregator.sol";
 import {IBondAuctioneer} from "../interfaces/IBondAuctioneer.sol";
 import {IBondTeller} from "../interfaces/IBondTeller.sol";
-
+import {Pausable} from "@openzeppelin-contracts/security/Pausable.sol";
+import {ReentrancyGuard} from "@openzeppelin-contracts/security/ReentrancyGuard.sol";
 
 /// @title Bond Auctioneer Base v1.1
 /// @notice Bond Auctioneer Base Contract
@@ -26,7 +25,7 @@ import {IBondTeller} from "../interfaces/IBondTeller.sol";
 ///      an Aggregator to register new markets.
 ///
 /// @author Oighty, Zeus, Potted Meat, indigo
-abstract contract BondBaseAuctioneer is IBondAuctioneer, Auth, Pausable, ReentrancyGuard {  
+abstract contract BondBaseAuctioneer is IBondAuctioneer, Auth, Pausable, ReentrancyGuard {
 
     // A 'vesting' param longer than 50 years is considered a timestamp for fixed expiry.
     uint48 internal constant MAX_FIXED_TERM = 52 weeks * 50;
@@ -41,8 +40,8 @@ abstract contract BondBaseAuctioneer is IBondAuctioneer, Auth, Pausable, Reentra
 
     // BondTeller contract that handles interactions with users and issues tokens
     IBondTeller internal immutable _teller;
-    
-     constructor(
+
+    constructor(
         IBondTeller teller_,
         IBondAggregator aggregator_,
         address guardian_,
@@ -54,37 +53,21 @@ abstract contract BondBaseAuctioneer is IBondAuctioneer, Auth, Pausable, Reentra
         allowNewMarkets = true;
     }
 
-    /* ========== ERRORS ========== */
-
-    error Auctioneer_Unreachable();
-
-    error Auctioneer_OnlyMarketOwner();
-    error Auctioneer_MarketNotActive();
-    error Auctioneer_MaxPayoutExceeded();
-    error Auctioneer_AmountLessThanMinimum();
-    error Auctioneer_NotEnoughCapacity();
-    error Auctioneer_InvalidCallback();
-    error Auctioneer_BadExpiry();
-    error Auctioneer_InvalidParams();
-    error Auctioneer_NotAuthorized();
-    error Auctioneer_NewMarketsNotAllowed();
-    error Auctioneer_UnsupportedToken();
-
-
     /**
      * @dev Modifier that checks that an account is market owner. Reverts
      * with Auctioneer_OnlyMarketOwner error.
      */
-    modifier onlyMarketOwner(uint256 id_) {
+    modifier onlyMarketOwner(
+        uint256 id_
+    ) {
         if (msg.sender != this.ownerOf(id_)) revert Auctioneer_OnlyMarketOwner();
         _;
     }
 
     modifier onlyTeller() {
         if (
-          address(msg.sender) != address(_teller) ||
-          address(msg.sender) == address(0) || 
-          address(msg.sender).code.length == 0
+            address(msg.sender) != address(_teller) || address(msg.sender) == address(0)
+                || address(msg.sender).code.length == 0
         ) revert Auctioneer_NotAuthorized();
         _;
     }
@@ -107,12 +90,17 @@ abstract contract BondBaseAuctioneer is IBondAuctioneer, Auth, Pausable, Reentra
         _unpause();
     }
 
-    function _setAllowNewMarkets(bool status_) internal requiresAuth {
+    function _setAllowNewMarkets(
+        bool status_
+    ) internal requiresAuth {
         allowNewMarkets = status_;
     }
 
     /// @inheritdoc IBondAuctioneer
-    function setAllowNewMarkets(bool status_) external virtual override {
+    function setAllowNewMarkets(
+        bool status_
+    ) external virtual override {
         _setAllowNewMarkets(status_);
     }
+
 }

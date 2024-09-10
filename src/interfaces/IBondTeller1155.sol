@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity >=0.8.0;
 
-import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {ERC20} from "@openzeppelin-contracts/token/ERC20/ERC20.sol";
 
 interface IBondTeller1155 {
+
     // Info for bond token
     struct TokenMetadata {
         bool active;
@@ -20,11 +21,7 @@ interface IBondTeller1155 {
     /// @param amount_       Amount of underlying tokens to deposit
     /// @return              ID of the ERC1155 bond token received
     /// @return              Amount of the ERC1155 bond token received
-    function create(
-        ERC20 underlying_,
-        uint48 expiry_,
-        uint256 amount_
-    ) external returns (uint256, uint256);
+    function create(ERC20 underlying_, uint48 expiry_, uint256 amount_) external returns (uint256, uint256);
 
     /// @notice             "Deploy" a new ERC1155 bond token for an (underlying, expiry) pair and return its token ID
     /// @dev                ERC1155 used for fixed-term
@@ -39,7 +36,8 @@ interface IBondTeller1155 {
     /// @param amount_   Amount of bond token to redeem
     function redeem(uint256 tokenId_, uint256 amount_) external;
 
-    /// @notice          Redeem multiple fixed-term bond tokens for the underlying tokens (bond tokens must have matured)
+    /// @notice          Redeem multiple fixed-term bond tokens for the underlying tokens (bond tokens must have
+    /// matured)
     /// @param tokenIds_ Array of bond token ids
     /// @param amounts_  Array of amounts of bond tokens to redeem
     function batchRedeem(uint256[] memory tokenIds_, uint256[] memory amounts_) external;
@@ -54,8 +52,8 @@ interface IBondTeller1155 {
     /// @param tokenId_     ID of the bond token
     /// @return name        Bond token name
     /// @return symbol      Bond token symbol
-    function getTokenNameAndSymbol(uint256 tokenId_)
-        external
-        view
-        returns (string memory, string memory);
+    function getTokenNameAndSymbol(
+        uint256 tokenId_
+    ) external view returns (string memory, string memory);
+
 }
